@@ -209,7 +209,7 @@ export async function handleStripeEvent(env: Env, ev: any, onPaid: (b: Booking, 
     // The seats went to someone else while this person was paying: give the money back at once.
     const r = await stripeApi.call(env, "POST", "/refunds", { payment_intent: obj.payment_intent, "metadata[reason]": "seats no longer available" }, `oversold-${b.id}`);
     await db.prepare("UPDATE bookings SET status = 'refunded', stripe_payment_intent = ?, cancelled_at = ?, note = ? WHERE id = ?")
-      .bind(obj.payment_intent || null, t, r.status === 200 ? "paid after the hold ran out and the tour had filled; refunded automatically" : `NEEDS A REFUND BY HAND: automatic refund failed (${r.body?.error?.message || r.status})`, b.id)
+      .bind(obj.payment_intent || null, t, (r.status === 200 ? "paid after the hold ran out and the tour had filled; refunded automatically" : `NEEDS A REFUND BY HAND: automatic refund failed (${r.body?.error?.message || r.status})`) + (obj.livemode === false ? " TEST PAYMENT: no real money" : ""), b.id)
       .run();
     return "refunded-oversold";
   }

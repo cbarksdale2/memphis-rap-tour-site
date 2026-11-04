@@ -204,6 +204,27 @@ describe("modes and money safety", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it("cutover needs a refunded LIVE booking; a refunded test booking doesn't count", async () => {
+    const id = await tour(5);
+    const res = await checkout(id, 1);
+    const sid = new URL(res.headers.get("Location")!).pathname.split("/").pop()!;
+    await webhook(paidEvent("evt_cut_test", sid, "pi_cut_test"));
+    const b = await env.DB.prepare("SELECT id FROM bookings WHERE stripe_session_id = ?").bind(sid).first<any>();
+    const { cookie } = await owner();
+    await post(cookie, `/admin/bookings/${b.id}/cancel`, {}, { csrf: await csrfOf(cookie, `/admin/tours/${id}`) });
+    E.STRIPE_SECRET_KEY = "sk_live_fake"; E.STRIPE_MODE = "live";
+    try {
+      const s1 = await post(cookie, "/admin/booking-setup", { mode: "own" }, { csrf: await csrfOf(cookie, "/admin/booking-setup") });
+      expect(flash(s1)).toContain("Not switched");
+      await env.DB.prepare("UPDATE bookings SET note = '' WHERE id = ?").bind(b.id).run(); // as if it had been a live payment
+      const s2 = await post(cookie, "/admin/booking-setup", { mode: "own" }, { csrf: await csrfOf(cookie, "/admin/booking-setup") });
+      expect(flash(s2)).toContain("Book buttons now go to this site");
+    } finally {
+      E.STRIPE_MODE = "test";
+      await env.DB.prepare("UPDATE settings SET value = 'acuity' WHERE key = 'booking_mode'").run();
+    }
+  });
+
   it("Book goes to Acuity until cutover, and cutover refuses test mode", async () => {
     const r = await SELF.fetch(`${BASE}/go/book?from=home`, { redirect: "manual" });
     expect(r.headers.get("Location")).toBe("https://app.acuityscheduling.com/schedule.php?owner=35599844");
