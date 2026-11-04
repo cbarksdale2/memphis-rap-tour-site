@@ -1,0 +1,20 @@
+{
+  "name": "memphis-rap-tour-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "node scripts/check/safety.mjs && node scripts/check/safety.mjs --self-test",
+    "gate": "npm run typecheck && npm test && npm run check",
+    "deploy:production": "bash scripts/deploy.sh"
+  },
+  "devDependencies": {
+    "wrangler": "4.157.0",
+    "vitest": "~4.1.12",
+    "@cloudflare/workers-types": "^5.20261103.1",
+    "typescript": "~5.9.0",
+    "@cloudflare/vitest-plugin": "1.5.1"
+  }
+}

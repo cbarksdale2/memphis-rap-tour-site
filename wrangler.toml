@@ -1,0 +1,38 @@
+# Memphis Rap Tour website. Free tier only: Workers, D1, KV, static assets.
+name = "memphis-rap-tour-site"
+main = "src/index.ts"
+compatibility_date = "2026-10-01"
+workers_dev = true
+preview_urls = false
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "mrt-site"
+database_id = "237b4e71-ead0-46af-b9f2-864d3a3dd2e2"
+migrations_dir = "migrations"
+
+# Photos uploaded in the admin. KV, because R2 is not enabled on this account (it needs a card on file).
+[[kv_namespaces]]
+binding = "IMAGES"
+id = "c638d46cad524cefbcc2553ec69f6dd1"
+
+# Daily backups of the database (keep 30). KV for the same reason as photos: R2 needs a card on file.
+[[kv_namespaces]]
+binding = "BACKUPS"
+id = "18838207c81e4be38bb6e4b052b047a1"
+
+# Daily backup + tidy-up. Time of day does not matter for a backup, so a fixed UTC hour is fine (09:00 UTC).
+[triggers]
+crons = ["0 9 * * *"]
+
+[vars]
+# The one host search engines should index. Every other host (workers.dev) answers noindex.
+CANONICAL_HOST = "www.memphisraptour.com"
+
+# Secrets (set with `wrangler secret put`, values from the vault, never in this file):
+#   UNSUB_SECRET  signs unsubscribe links
+#   IP_SALT       salts the hashed IPs used for rate limits

@@ -4,3 +4,5 @@ node_modules/
 *.local
 coverage/
 .DS_Store
+public/fonts/archivo-600.woff2
+public/fonts/archivo-700.woff2
