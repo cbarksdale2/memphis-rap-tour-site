@@ -1127,9 +1127,9 @@ const allCsv: Handler = async (c) => bookingsCsv(c, "", [], `memphis-rap-tour-bo
 const bookingSetup: Handler = async (c) => {
   const ready = stripeReady(c.env);
   const mode = await bookingMode(c.env.DB);
-  const tested = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM bookings WHERE source = 'site' AND status = 'refunded' AND stripe_payment_intent IS NOT NULL").first<{ n: number }>();
+  const tested = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM bookings WHERE source = 'site' AND status = 'refunded' AND stripe_payment_intent IS NOT NULL AND note NOT LIKE '%TEST PAYMENT%'").first<{ n: number }>();
   const canSwitch = ready.ok && ready.live && (tested?.n ?? 0) > 0;
-  const why = !ready.ok ? ready.reason : !ready.live ? "Stripe is in test mode, so real customers can't pay yet" : !(tested?.n) ? "make one real booking on this site and refund it first" : "";
+  const why = !ready.ok ? ready.reason : !ready.live ? "Stripe is in test mode, so real customers can't pay yet" : !(tested?.n) ? "make one real (live-mode) booking on this site and refund it first" : "";
   return page(c, { title: "Online booking", tab: "tours", back: { href: "/admin/tours", label: "Tours" }, flash: flashFrom(c.url) }, `
 <h1>Online booking set-up</h1>
 <ul class="rows">
@@ -1149,7 +1149,7 @@ const bookingSetupSave: Handler = async (c) => {
   const want = S(c, "mode") === "own" ? "own" : "acuity";
   if (want === "own") {
     const ready = stripeReady(c.env);
-    const tested = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM bookings WHERE source = 'site' AND status = 'refunded' AND stripe_payment_intent IS NOT NULL").first<{ n: number }>();
+    const tested = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM bookings WHERE source = 'site' AND status = 'refunded' AND stripe_payment_intent IS NOT NULL AND note NOT LIKE '%TEST PAYMENT%'").first<{ n: number }>();
     if (!ready.ok || !ready.live || !(tested?.n)) return back("/admin/booking-setup", "Not switched: live payments and one refunded test booking are needed first.", "err");
   }
   await setSetting(c.env.DB, "booking_mode", want);

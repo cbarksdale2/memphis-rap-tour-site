@@ -6,7 +6,7 @@ Workers KV. Everything runs on Cloudflare's free tier ($0).
 
 | Thing | Where |
 |---|---|
-| Preview site | `https://memphis-rap-tour-site.<account>.workers.dev` (see the last deploy line) |
+| Preview site | https://memphis-rap-tour-site.cbarksdale2.workers.dev |
 | Admin | `<site>/admin` |
 | Database | D1 `mrt-site` |
 | Photos | KV namespace `mrt-site-images` (R2 is not enabled on the account: it needs a card on file) |
@@ -76,7 +76,10 @@ Status: **built and tested against Stripe in test mode. Book buttons still go to
    vault run -- sh -c 'printf %s "$STRIPE_SECRET_KEY_MRT" | npx wrangler secret put STRIPE_SECRET_KEY'
    vault run -- sh -c 'printf %s "$STRIPE_WEBHOOK_SECRET_MRT" | npx wrangler secret put STRIPE_WEBHOOK_SECRET'
    ```
-5. Test with card `4242 4242 4242 4242`. Test payments are marked "TEST PAYMENT" on the riders list.
+   Done for test mode on 3 Nov 2026: vault `STRIPE_SECRET_KEY_MRT_TEST` and `STRIPE_WEBHOOK_SECRET_MRT_TEST`
+   (endpoint `we_1UXs9KLTVhIsXeuY5MEsBXyo`), both on the Worker.
+5. Test with card `4242 4242 4242 4242`. Test payments are marked "TEST PAYMENT" on the riders list and
+   never count toward the cutover.
 
 ### Cutover from Acuity (only with Carlos's yes)
 
