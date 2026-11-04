@@ -1,0 +1,40 @@
+; memphisraptour.com — every record served today, copied for import into Cloudflare (step 1).
+; Read with dig from the authoritative server ns-cloud-e1.googledomains.com on 2026-11-04 00:45 UTC
+; (3 Nov 2026, 7:45 pm New York). A zone transfer (AXFR) was refused, so the names were queried one
+; by one: @, www, _dmarc, google._domainkey, dc-aa8e722993._spfm, _domainconnect and 30 common names
+; (mail, autodiscover, calendar, mta-sts, default/s1/k1/selector1._domainkey and others) for
+; A, AAAA, CNAME, MX, TXT, SRV and CAA. A random name answered NXDOMAIN, so there is no wildcard.
+; Not present: AAAA, CAA, SRV, DMARC, DKIM, DNSSEC (no DS record at the .com registry).
+;
+; SOA and NS are shown as comments: Cloudflare supplies its own when it hosts the zone.
+; @ 21600 IN SOA ns-cloud-e1.googledomains.com. cloud-dns-hostmaster.google.com. 1 21600 3600 259200 300
+; @ 21600 IN NS  ns-cloud-e1.googledomains.com.
+; @ 21600 IN NS  ns-cloud-e2.googledomains.com.
+; @ 21600 IN NS  ns-cloud-e3.googledomains.com.
+; @ 21600 IN NS  ns-cloud-e4.googledomains.com.
+;
+; Import with "DNS only" (grey cloud) for every record. Do not proxy anything in step 1.
+
+$ORIGIN memphisraptour.com.
+$TTL 14400
+
+; Website (Squarespace today)
+@                 14400 IN A      198.49.23.145
+www               14400 IN CNAME  ext-sq.squarespace.com.
+
+; Email: Google Workspace. Keep exactly as is.
+@                 14400 IN MX     1  aspmx.l.google.com.
+@                 14400 IN MX     5  alt1.aspmx.l.google.com.
+@                 14400 IN MX     5  alt2.aspmx.l.google.com.
+@                 14400 IN MX     10 alt3.aspmx.l.google.com.
+@                 14400 IN MX     10 alt4.aspmx.l.google.com.
+
+; SPF, copied exactly. NOTE: the include target dc-aa8e722993._spfm.memphisraptour.com has no
+; record, so today this SPF ends in a permanent error. Repaired in step 1c of dns-cutover.md.
+@                 14400 IN TXT    "v=spf1 include:dc-aa8e722993._spfm.memphisraptour.com ~all"
+
+; Google site verification (Search Console / Workspace). Keep.
+@                 14400 IN TXT    "google-site-verification=bAI0XaSd1UHkQPwa7qz89CG0h8jGwiRqJ8AL9Qz7xjk"
+
+; Squarespace Domain Connect (lets Squarespace offer one-click DNS set-ups). Harmless; keep in step 1.
+_domainconnect    14400 IN CNAME  _domainconnect.domains.squarespace.com.
