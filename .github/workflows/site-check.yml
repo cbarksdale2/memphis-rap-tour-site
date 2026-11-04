@@ -1,0 +1,50 @@
+# Daily: the site's ticket facts still match the booking page, every page answers, Book still works.
+# Runs at 13:00 UTC (8:00 or 9:00 am New York); the exact hour does not matter for this check.
+# Problems or "could not read" open (or add to) ONE issue; a clean run closes it.
+name: Daily site check
+on:
+  schedule:
+    - cron: "0 13 * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+env:
+  SITE_URL: https://memphis-rap-tour-site.cbarksdale2.workers.dev
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the live site against the booking page
+        id: run
+        run: |
+          set +e
+          node scripts/check/site-check.mjs "$SITE_URL" > result.txt 2>&1
+          code=$?
+          cat result.txt
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Open, update or close the issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CODE: ${{ steps.run.outputs.code }}
+        run: |
+          title="Site check: the website needs a look"
+          num=$(gh issue list --state open --search "in:title \"$title\"" --json number -q '.[0].number')
+          if [ "$CODE" = "0" ]; then
+            [ -n "$num" ] && gh issue close "$num" --comment "All clear on $(date -u +%F): $(cat result.txt)"
+            exit 0
+          fi
+          kind=$([ "$CODE" = "1" ] && echo "Problems found" || echo "Could not check (this is not an all clear)")
+          body="$kind on $(date -u +%F) for $SITE_URL
+
+          $(cat result.txt)
+
+          Fix the site in the admin (Tour info) or the booking page, whichever is wrong. Ticket prices change only with Carlos's yes."
+          if [ -n "$num" ]; then gh issue comment "$num" --body "$body"; else gh issue create --title "$title" --body "$body"; fi
+          exit 1
