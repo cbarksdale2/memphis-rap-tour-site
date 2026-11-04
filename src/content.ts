@@ -277,7 +277,7 @@ export function seedContent(): Content {
           s("route-stops", "stops", { heading: "What are the stops on the tour?", body: "The bus makes {stop_count} stops, in this order.", note: "Stops in order, as set by Memphis Rap Tour." }),
           s("route-meet", "text", { heading: "Where do we meet?", body: "Meet at {meeting_point}, Memphis, TN 38103, on the southeast side of the block. The bus brings you back to the same spot at the end.\n\n[Get directions ›](https://www.google.com/maps/search/?api=1&query=Beale+St+and+S+B.B.+King+Blvd+Memphis+TN+38103)" }),
           s("route-expect", "text", { heading: "What happens on the tour?", body: WHAT_HAPPENS }),
-          s("route-cta", "cta", { label: "Ready to ride?", heading: "Book a seat on the bus", body: "{schedule_long}. {duration}. {price}.", price: "", subtext: "", button_text: "Book a seat ›", button_href: "{book_url}", style: "gold" }),
+          s("route-cta", "cta", { label: "Ready to ride?", heading: "Book a seat on the bus", body: "{duration}, {schedule_long}. Tickets are {price}.", price: "", subtext: "", button_text: "Book a seat ›", button_href: "{book_url}", style: "gold" }),
         ],
       },
       {
@@ -300,7 +300,7 @@ export function seedContent(): Content {
         intro: "Memphis Rap Tour has a 5.0 rating from 20 reviews on Tripadvisor (as of 3 Nov 2026). Riders mention the history, the guides, and how engaged their teens and kids were.",
         sections: [
           s("reviews-list", "reviews", { heading: "What do riders say?", body: "Short quotes from Tripadvisor. Tap a name to read the full review there.", limit: "0" }),
-          s("reviews-cta", "cta", { label: "Ready to ride?", heading: "Book a seat on the bus", body: "{schedule_long}. {duration}. {price}.", price: "", subtext: "", button_text: "Book a seat ›", button_href: "{book_url}", style: "gold" }),
+          s("reviews-cta", "cta", { label: "Ready to ride?", heading: "Book a seat on the bus", body: "{duration}, {schedule_long}. Tickets are {price}.", price: "", subtext: "", button_text: "Book a seat ›", button_href: "{book_url}", style: "gold" }),
         ],
       },
       {
@@ -339,7 +339,7 @@ export function seedContent(): Content {
         sections: [
           s("about-who", "image_text", { heading: "Who runs the tour?", body: "Memphis Rap Tour is owned by Carlos Barksdale and run by a Memphis team. Tours leave Beale Street {schedule_long}.", image: "bus", link_text: "", link_href: "" }),
           s("about-contact", "text", { heading: "How do I reach the team?", body: "Email [{email}](mailto:{email}). You can also find us on [Instagram @memphisraptour](https://www.instagram.com/memphisraptour/) and [TikTok @memphis.rap.tour](https://www.tiktok.com/@memphis.rap.tour)." }),
-          s("about-cta", "cta", { label: "Ready to ride?", heading: "Book a seat on the bus", body: "{schedule_long}. {duration}. {price}.", price: "", subtext: "", button_text: "Book a seat ›", button_href: "{book_url}", style: "gold" }),
+          s("about-cta", "cta", { label: "Ready to ride?", heading: "Book a seat on the bus", body: "{duration}, {schedule_long}. Tickets are {price}.", price: "", subtext: "", button_text: "Book a seat ›", button_href: "{book_url}", style: "gold" }),
         ],
       },
       {

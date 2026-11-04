@@ -263,10 +263,10 @@ const home: Handler = async (c) => {
   return page(c, { title: "Home", tab: "home", flash: flashFrom(c.url) }, `
 <p class="line1">${esc(line1)}</p>
 <h1>Hi ${esc(c.auth.user.name.split(" ")[0])}</h1>
-${codes === 0 ? `<p class="flash flash-gap">You have no recovery codes left. <a href="/admin/account">Make new ones ›</a></p>` : ""}
+${codes === 0 ? `<p class="flash flash-gap">No recovery codes saved. They let you in if the password is lost. <a href="/admin/account">Make them ›</a></p>` : ""}
 <section class="card">
 <h2>Last 7 days</h2>
-<p class="big">${cm.view || 0} visits · ${cm.book || 0} Book taps</p>
+<p class="big">${cm.view || 0} visit${cm.view === 1 ? "" : "s"} · ${cm.book || 0} Book tap${cm.book === 1 ? "" : "s"}</p>
 <p class="sub">Counted on this site, without cookies. Book taps send people on to the booking page.${
     top.results.length ? ` Most Book taps from: ${top.results.map((r) => `${esc(r.path)} (${r.n})`).join(", ")}.` : ""
   }</p>

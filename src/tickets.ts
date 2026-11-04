@@ -19,7 +19,7 @@ function page(title: string, h1: string, path = "/tickets"): Page {
 async function respond(ctx: RenderCtx, env: Env, title: string, body: string, status = 200): Promise<Response> {
   const own = (await bookingMode(env.DB)) === "own";
   const c = { ...ctx, indexable: ctx.indexable && own };
-  const out = layout(c, page(title, title), `<section class="page-head"><h1>${esc(title)}</h1></section>${body}`, { noSchema: true });
+  const out = layout(c, page(title, title), `<section class="page-head"><h1>${esc(title)}</h1></section>${body}`, { noSchema: true, noSticky: true });
   return html(out, { status, headers: { "Cache-Control": "no-store", ...(c.indexable ? {} : { "X-Robots-Tag": "noindex, nofollow" }) } });
 }
 

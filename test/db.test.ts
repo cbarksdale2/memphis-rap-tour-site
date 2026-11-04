@@ -2,7 +2,7 @@
 import { applyD1Migrations } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { dailyJob, KEEP_BACKUPS } from "../src/index";
+import { dailyJob, KEEP_BACKUPS } from "../src/jobs";
 import { publicPage } from "./helpers";
 
 describe("migrations", () => {
@@ -17,6 +17,15 @@ describe("migrations", () => {
     for (const m of env.TEST_MIGRATIONS) for (const q of m.queries) await env.DB.prepare(q).run();
     const after = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM versions) AS v, (SELECT COUNT(*) FROM schema_version) AS s").first();
     expect(after).toEqual(before);
+  });
+});
+
+describe("the Worker module", () => {
+  it("exports only the handler (the runtime refuses to start a Worker with any other named export)", async () => {
+    const mod = await import("../src/index");
+    expect(Object.keys(mod)).toEqual(["default"]);
+    expect(typeof mod.default.fetch).toBe("function");
+    expect(typeof mod.default.scheduled).toBe("function");
   });
 });
 

@@ -18,7 +18,7 @@ export interface RenderCtx {
   bookUrl: string;
 }
 
-export const CSS_VERSION = "4";
+export const CSS_VERSION = "6";
 
 export function imageUrl(im: ImageRow): string {
   if (im.storage.startsWith("asset:")) return im.storage.slice(6);
@@ -195,7 +195,7 @@ function nav(ctx: RenderCtx, cls: string): string {
     .join("")}</nav>`;
 }
 
-export function layout(ctx: RenderCtx, page: Page, mainHtml: string, opts: { status?: number; noSchema?: boolean } = {}): string {
+export function layout(ctx: RenderCtx, page: Page, mainHtml: string, opts: { status?: number; noSchema?: boolean; noSticky?: boolean } = {}): string {
   const c = ctx.c;
   const tok = tokens(c);
   const t = c.ticket;
@@ -238,7 +238,7 @@ ${ctx.indexable && !ctx.preview ? "" : '<meta name="robots" content="noindex, no
 <link rel="stylesheet" href="/assets/site.css?v=${CSS_VERSION}">
 ${opts.noSchema ? "" : `<script type="application/ld+json">${jsonLd(ctx, page)}</script>`}
 </head>
-<body>
+<body${opts.noSticky ? ' class="no-sticky"' : ""}>
 ${ctx.preview ? `<div class="preview-bar" role="status">Preview: not live yet. <a href="/admin">← Back to the admin</a></div>` : ""}
 <a class="skip" href="#main">Skip to content</a>
 <header class="topbar">

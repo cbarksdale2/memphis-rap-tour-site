@@ -52,7 +52,9 @@ main{display:block}
 .wordmark{font:400 17px/1 var(--f-display);letter-spacing:.04em;color:var(--ink);text-decoration:none;min-height:44px;display:inline-flex;align-items:center;margin-right:auto}
 .desk-nav{display:none}
 .menu{position:static}
-.menu summary{list-style:none;min-height:44px;display:inline-flex;align-items:center;padding:0 10px;font-weight:600;cursor:pointer;border-radius:8px}
+.menu summary{list-style:none;min-height:44px;display:inline-flex;align-items:center;padding:0 10px;font-weight:600;cursor:pointer;border-radius:8px;white-space:nowrap}
+.topbar .btn{white-space:nowrap}
+@media (max-width:420px){.wordmark{font-size:15px;white-space:nowrap}.topbar{gap:4px;padding:10px 12px}.menu summary{padding:0 8px}}
 .menu summary::-webkit-details-marker{display:none}
 .menu[open] summary{background:var(--paper)}
 .menu-nav{position:absolute;left:0;right:0;top:100%;background:var(--card);border-bottom:1px solid var(--line);display:grid;padding:6px 16px 12px;z-index:5;box-shadow:0 8px 16px rgba(0,0,0,.08)}
@@ -129,7 +131,7 @@ main{display:block}
 /* Forms */
 .signup-form{display:grid;gap:14px;max-width:520px}
 .signup-form label{display:grid;gap:6px;font-weight:600}
-.signup-form input,.signup-form textarea{font:400 16px/1.4 var(--f-body);padding:12px;border:1px solid var(--muted);border-radius:8px;background:var(--card);color:var(--ink);min-height:48px;width:100%}
+.signup-form input,.signup-form textarea,.signup-form select{font:400 16px/1.4 var(--f-body);padding:12px;border:1px solid var(--muted);border-radius:8px;background:var(--card);color:var(--ink);min-height:48px;width:100%}
 .signup-form .consent{grid-template-columns:28px 1fr;align-items:start;font-weight:400}
 .signup-form .consent input{width:24px;height:24px;min-height:0;margin:2px 0 0}
 .hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
@@ -167,6 +169,8 @@ main{display:block}
   .hero-photo{aspect-ratio:3/4;max-height:640px}
   .facts{grid-template-columns:repeat(4,minmax(0,1fr))}
   .facts .wide{grid-column:auto}
+  .hero.has-photo .facts{grid-template-columns:1fr 1fr}
+  .hero.has-photo .facts .wide{grid-column:1/-1}
   .ctas{grid-template-columns:auto auto;justify-content:start}
   .sec{padding:56px 48px;gap:20px}
   h2{font-size:32px}
@@ -213,3 +217,6 @@ main{display:block}
   .cal-month .slot{display:block;font-size:13px;font-weight:600;padding:6px;border-radius:6px;background:var(--gold);color:var(--gold-ink);text-decoration:none}
   .cal-month .slot.sold{background:var(--paper);color:var(--muted);text-decoration:line-through}
 }
+
+body.no-sticky .sticky{display:none}
+body.no-sticky .foot{padding-bottom:28px}
