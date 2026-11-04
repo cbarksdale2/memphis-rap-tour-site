@@ -201,6 +201,7 @@ export async function handleStripeEvent(env: Env, ev: any, onPaid: (b: Booking, 
       .run();
     const tour = (await getTour(db, b.tour_id))!;
     if (upd.meta.changes === 1) {
+      if (obj.livemode === false) await db.prepare("UPDATE bookings SET note = TRIM(note || ' TEST PAYMENT: no real money') WHERE id = ?").bind(b.id).run();
       const paid = (await db.prepare("SELECT * FROM bookings WHERE id = ?").bind(b.id).first<Booking>())!;
       await onPaid(paid, tour);
       return b.status === "held" && (b.hold_expires_at ?? 0) > t ? "paid" : "paid-late";

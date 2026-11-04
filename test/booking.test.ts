@@ -43,7 +43,7 @@ async function webhook(event: any, secret = "whsec_test_secret", t = Math.floor(
   const body = JSON.stringify(event);
   return SELF.fetch(`${BASE}/stripe/webhook`, { method: "POST", headers: { "Stripe-Signature": await signPayload(secret, body, t), "Content-Type": "application/json" }, body });
 }
-const paidEvent = (id: string, sessionId: string, pi = "pi_test_1", amount = 7000) => ({ id, type: "checkout.session.completed", data: { object: { id: sessionId, payment_status: "paid", payment_intent: pi, amount_total: amount, metadata: {} } } });
+const paidEvent = (id: string, sessionId: string, pi = "pi_test_1", amount = 7000) => ({ id, type: "checkout.session.completed", livemode: false, data: { object: { id: sessionId, livemode: false, payment_status: "paid", payment_intent: pi, amount_total: amount, metadata: {} } } });
 
 describe("seats", () => {
   it("never oversells: 12 people checking out at once for 5 seats get exactly 5", async () => {
@@ -130,6 +130,7 @@ describe("Stripe webhook", () => {
     const b = await env.DB.prepare("SELECT * FROM bookings WHERE stripe_session_id = ?").bind(sid).first<any>();
     expect(b.status).toBe("paid");
     expect(b.stripe_payment_intent).toBe("pi_test_1");
+    expect(b.note).toContain("TEST PAYMENT");
     expect(mails).toHaveLength(1);
     expect(mails[0].to).toBe("buyer@example.org");
     expect(mails[0].text).toContain("Beale St & S B.B. King Blvd, outside Patio Bar");
@@ -157,6 +158,9 @@ describe("Stripe webhook", () => {
     expect(out.outcome).toBe("refunded-oversold");
     expect(calls.find((c) => c.path === "/refunds")!.params.payment_intent).toBe("pi_late");
     expect((await getTour(env.DB, id))!.taken).toBe(2);
+    // Stripe resends the same event: no second refund request.
+    expect((await (await webhook(paidEvent("evt_late_full", sid, "pi_late"))).json<any>()).outcome).toBe("duplicate");
+    expect(calls.filter((c) => c.path === "/refunds")).toHaveLength(1);
   });
 });
 
