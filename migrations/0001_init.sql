@@ -117,7 +117,8 @@ CREATE TABLE IF NOT EXISTS tour_requests (
   message TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
   handled_at INTEGER,
-  handled_by INTEGER
+  handled_by INTEGER,
+  email_status TEXT NOT NULL DEFAULT ''
 );
 
 INSERT OR IGNORE INTO schema_version (migration) VALUES ('0001_init');

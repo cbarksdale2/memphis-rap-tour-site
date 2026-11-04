@@ -7,6 +7,9 @@ import { readImage } from "./images";
 import { type ImageRow, type RenderCtx, renderPage, requestForm, signupForm, simplePage } from "./render";
 import { llms, robots, sitemap } from "./seo";
 import { bump, checkUnsub, countable, signup, tourRequest, unsubscribe, unsubToken } from "./subscribe";
+import { bookingMode } from "./booking";
+import { mailer, statusText } from "./email";
+import { handleTickets } from "./tickets";
 
 export interface FullEnv extends Env {
   BACKUPS: KVNamespace;
@@ -15,12 +18,15 @@ export interface FullEnv extends Env {
 async function context(env: Env, url: URL, which: "published" | "draft", preview = false): Promise<RenderCtx> {
   const p = await pointers(env.DB);
   const id = which === "draft" ? p.draft : p.published;
-  const [v, imgs] = await Promise.all([
+  const [v, imgs, mode] = await Promise.all([
     loadVersion(env.DB, id),
     env.DB.prepare("SELECT id, storage, width, height, alt FROM images WHERE deleted_at IS NULL").all<ImageRow>(),
+    bookingMode(env.DB),
   ]);
+  const content = v!.content as Content;
   return {
-    c: v!.content as Content,
+    bookUrl: mode === "own" ? `${url.origin}/tickets` : content.ticket.book_url,
+    c: content,
     images: new Map(imgs.results.map((i) => [i.id, i])),
     origin: url.origin,
     prefix: preview ? "/admin/preview" : "",
@@ -74,7 +80,7 @@ async function handle(req: Request, env: FullEnv, ectx: ExecutionContext): Promi
     const ctx = await context(env, url, "published");
     const from = (url.searchParams.get("from") || "").replace(/[^a-z-]/g, "").slice(0, 30) || "site";
     if (countable(req)) ectx.waitUntil(bump(env.DB, from, "book"));
-    return redirect(ctx.c.ticket.book_url, 302, { "X-Robots-Tag": "noindex" });
+    return redirect(ctx.bookUrl, 302, { "X-Robots-Tag": "noindex" });
   }
 
   if (path === "/subscribe" && req.method === "POST") {
@@ -116,12 +122,27 @@ async function handle(req: Request, env: FullEnv, ectx: ExecutionContext): Promi
     const form = await req.formData();
     const r = await tourRequest(req, env, form);
     if (r.kind === "invalid") return publicHtml(simplePage(ctx, "Check the form", requestForm(ctx, "Ask for a private tour", "", "request", r.error, r.values)), ctx, 400);
+    if (r.kind === "saved") {
+      const mail = await mailer.send(env, {
+        to: ctx.c.ticket.email,
+        replyTo: String(form.get("email") || ""),
+        subject: `Private tour request: ${String(form.get("name") || "").slice(0, 60)}, ${String(form.get("group_size") || "?")} riding`,
+        text: ["A private tour request came in on the website.", "", ...["name", "email", "date_wanted", "group_size", "occasion", "message"].map((k) => `${k.replace("_", " ")}: ${String(form.get(k) || "").slice(0, 2000)}`), "", "Reply to this email to answer them. Mark it handled in the admin: /admin/requests"].join("\n"),
+      });
+      await env.DB.prepare("UPDATE tour_requests SET email_status = ? WHERE id = ?").bind(statusText(mail), r.id).run();
+    }
     if (r.kind === "limited") return publicHtml(simplePage(ctx, "Too many requests", `<p>Too many requests from this connection. Try again in an hour, or email <a href="mailto:${esc(ctx.c.ticket.email)}">${esc(ctx.c.ticket.email)}</a>.</p>`), ctx, 429);
     return redirect("/private-tours/thanks");
   }
   if (path === "/private-tours/thanks") {
     const ctx = await context(env, url, "published");
     return publicHtml(simplePage(ctx, "Request sent", `<p>Thanks. We have your request and will reply by email. For anything urgent, email <a href="mailto:${esc(ctx.c.ticket.email)}">${esc(ctx.c.ticket.email)}</a>.</p><p><a class="btn btn-gold" href="/">Back to the home page ›</a></p>`), ctx);
+  }
+
+  if (path === "/tickets" || path.startsWith("/tickets/") || path === "/stripe/webhook") {
+    const ctx = await context(env, url, "published");
+    const r = await handleTickets(req, env, url, ctx);
+    if (r) return r;
   }
 
   if (req.method !== "GET" && req.method !== "HEAD") return text("Method not allowed", undefined, 405);
@@ -146,7 +167,7 @@ async function handle(req: Request, env: FullEnv, ectx: ExecutionContext): Promi
 
 // ---------- daily job: backup to KV (keep 30) and tidy up ----------
 
-const BACKUP_TABLES = ["schema_version", "users", "settings", "images", "subscribers", "tour_requests", "audit", "counts", "recovery_codes"];
+const BACKUP_TABLES = ["schema_version", "users", "settings", "images", "subscribers", "tour_requests", "audit", "counts", "recovery_codes", "tours", "bookings", "stripe_events"];
 export const KEEP_BACKUPS = 30;
 
 export async function dailyJob(env: FullEnv, t = now()): Promise<string> {
@@ -170,6 +191,8 @@ export async function dailyJob(env: FullEnv, t = now()): Promise<string> {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM attempts WHERE at < ?").bind(t - 2 * 86400),
     env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(t),
+    env.DB.prepare("UPDATE bookings SET status = 'expired' WHERE status = 'held' AND hold_expires_at < ?").bind(t - 3600),
+    env.DB.prepare("DELETE FROM password_resets WHERE expires_at < ?").bind(t),
   ]);
   const rows = Object.values(dump).reduce((n, r) => n + r.length, 0);
   const census = `backup ${day}: ${rows} rows, ${Math.round(body.length / 1024)} KB; kept ${Math.min(keys.length, KEEP_BACKUPS)}, removed ${old.length}; purged ${gone.results.length} photo(s)`;

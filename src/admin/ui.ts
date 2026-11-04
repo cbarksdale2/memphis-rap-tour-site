@@ -5,7 +5,7 @@ import { esc, html } from "../http";
 export interface Frame {
   auth: Auth | null;
   title: string;
-  tab?: "home" | "pages" | "tour" | "more";
+  tab?: "home" | "tours" | "pages" | "tour" | "more";
   back?: { href: string; label: string };
   unpublished?: number; // saves since the live version; 0 = up to date
   flash?: { kind: "ok" | "err"; text: string } | null;
@@ -47,8 +47,8 @@ export function frame(f: Frame, body: string): Response {
   const tabs = a
     ? `<nav class="tabs" aria-label="Admin">
 <a href="/admin"${f.tab === "home" ? ' aria-current="page"' : ""}>Home</a>
+<a href="/admin/tours"${f.tab === "tours" ? ' aria-current="page"' : ""}>Tours</a>
 <a href="/admin/pages"${f.tab === "pages" ? ' aria-current="page"' : ""}>Pages</a>
-<a href="/admin/tour"${f.tab === "tour" ? ' aria-current="page"' : ""}>Tour info</a>
 <a href="/admin/more"${f.tab === "more" ? ' aria-current="page"' : ""}>☰ More</a>
 </nav>`
     : "";
@@ -64,8 +64,8 @@ export function frame(f: Frame, body: string): Response {
 <title>${esc(f.title)} · Memphis Rap Tour admin</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/admin.css?v=3">
-<script src="/assets/admin.js?v=3" defer></script>
+<link rel="stylesheet" href="/assets/admin.css?v=4">
+<script src="/assets/admin.js?v=4" defer></script>
 </head><body class="admin${a ? " signed-in" : ""}">
 ${banner}
 <main class="wrap">

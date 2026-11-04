@@ -7,6 +7,13 @@ export interface Env {
   UNSUB_SECRET: string;
   IP_SALT: string;
   CANONICAL_HOST: string;
+  /** "test" (default) or "live". A live Stripe key is refused unless this says "live". */
+  STRIPE_MODE?: string;
+  STRIPE_SECRET_KEY?: string;
+  STRIPE_WEBHOOK_SECRET?: string;
+  /** Cloudflare Email Routing "send_email" binding; absent until memphisraptour.com is on Cloudflare. */
+  EMAIL?: SendEmail;
+  EMAIL_FROM?: string;
 }
 
 export const now = () => Math.floor(Date.now() / 1000);

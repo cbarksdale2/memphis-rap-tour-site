@@ -35,7 +35,7 @@ export function business(c: Content, origin: string) {
   };
 }
 
-export function tourTrip(c: Content, origin: string, privateTour = false) {
+export function tourTrip(c: Content, origin: string, privateTour = false, bookUrl = c.ticket.book_url) {
   const t = c.ticket;
   const tok = tokens(c);
   const route = c.pages.find((p) => p.slug === "route");
@@ -61,7 +61,7 @@ export function tourTrip(c: Content, origin: string, privateTour = false) {
           priceSpecification: { "@type": "PriceSpecification", minPrice: Number(t.private_price_amount) || undefined, priceCurrency: t.currency },
           description: plain(t.private_price_text, tok) + " for a private buy-out of the bus",
         }
-      : { "@type": "Offer", url: safeHref(t.book_url) || undefined, price: t.price_amount, priceCurrency: t.currency, description: plain(t.price_text, tok) },
+      : { "@type": "Offer", url: safeHref(bookUrl) || undefined, price: t.price_amount, priceCurrency: t.currency, description: plain(t.price_text, tok) },
   };
 }
 
@@ -106,7 +106,7 @@ export function jsonLd(ctx: RenderCtx, page: Page): string {
     }
   }
   graph.push(webPage);
-  if (["home", "route", "book", "reviews"].includes(page.slug)) graph.push(tourTrip(c, origin));
+  if (["home", "route", "book", "reviews"].includes(page.slug)) graph.push(tourTrip(c, origin, false, ctx.bookUrl));
   if (page.slug === "private") graph.push(tourTrip(c, origin, true));
   // "</" inside JSON would end the script tag early.
   return JSON.stringify({ "@context": "https://schema.org", "@graph": graph }).replace(/</g, "\\u003c");

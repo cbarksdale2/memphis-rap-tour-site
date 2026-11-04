@@ -41,6 +41,7 @@ export interface Ticket {
   region: string;
   postal_code: string;
   email: string;
+  policy_text?: string;
 }
 
 export interface SiteInfo {
@@ -212,6 +213,7 @@ export function seedContent(): Content {
       region: "TN",
       postal_code: "38103",
       email: "team@memphisraptour.com",
+      policy_text: "Refund and cancellation policy coming soon. Questions before you book? Email team@memphisraptour.com.",
     },
     site: {
       name: "Memphis Rap Tour",

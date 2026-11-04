@@ -14,9 +14,11 @@ export interface RenderCtx {
   updated: number;
   indexable: boolean;
   preview: boolean;
+  /** Where Book goes: the Acuity page until cutover, then /tickets on this site. */
+  bookUrl: string;
 }
 
-export const CSS_VERSION = "3";
+export const CSS_VERSION = "4";
 
 export function imageUrl(im: ImageRow): string {
   if (im.storage.startsWith("asset:")) return im.storage.slice(6);

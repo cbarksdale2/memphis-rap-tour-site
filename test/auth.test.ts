@@ -155,36 +155,70 @@ describe("temporary passwords and recovery codes", () => {
   });
 });
 
-describe("roles", () => {
-  it("an editor cannot manage the team, see the email list, remove sections or change the Book link", async () => {
-    const e = await makeUser({ role: "editor" });
-    const cookie = await login(e.email, e.password);
-    expect((await get(cookie, "/admin/team")).status).toBe(403);
-    expect((await get(cookie, "/admin/subscribers")).status).toBe(403);
-    expect((await get(cookie, "/admin/subscribers.csv")).status).toBe(403);
-    expect((await post(cookie, "/admin/sections/home-faq/delete", {})).status).toBe(403);
-    expect((await get(cookie, "/admin/requests")).status).toBe(200);
-    const tour = await (await get(cookie, "/admin/tour")).text();
-    const fields: Record<string, string> = {};
-    for (const m of tour.matchAll(/name="([a-z_]+)"[^>]*value="([^"]*)"/g)) fields[m[1]] = m[2].replace(/&amp;/g, "&");
-    fields.stops = "Beale Street";
-    fields.book_url = "https://evil.example/book";
-    expect((await post(cookie, "/admin/tour", fields)).status).toBe(303);
-    const draft = await env.DB.prepare("SELECT content FROM versions WHERE id = (SELECT value FROM settings WHERE key = 'draft_version')").first<{ content: string }>();
-    expect(JSON.parse(draft!.content).ticket.book_url).toBe("https://app.acuityscheduling.com/schedule.php?owner=35599844");
+describe("one shared login (owner ruling 3 Nov 2026)", () => {
+  it("there is no team or user-management page", async () => {
+    const { cookie } = await owner();
+    expect((await get(cookie, "/admin/team")).status).toBe(404);
+    expect(await (await get(cookie, "/admin/more")).text()).not.toContain("/admin/team");
+  });
+});
+
+describe("forgot password", () => {
+  async function ask(email: string, from = ip()) {
+    const page = await SELF.fetch(`${BASE}/admin/forgot`, { headers: { "CF-Connecting-IP": from } });
+    const lc = (await page.text()).match(/name="lc" value="([^"]+)"/)![1];
+    return SELF.fetch(`${BASE}/admin/forgot`, {
+      method: "POST", redirect: "manual",
+      headers: { ...ORIGIN, Cookie: cookiesFrom(page), "CF-Connecting-IP": from, "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ lc, email }),
+    });
+  }
+  async function setNew(link: string, pw: string) {
+    const page = await SELF.fetch(link);
+    const body = await page.text();
+    const lc = body.match(/name="lc" value="([^"]+)"/)?.[1];
+    if (!lc) return { status: page.status, body };
+    const res = await SELF.fetch(link, {
+      method: "POST", redirect: "manual",
+      headers: { ...ORIGIN, Cookie: cookiesFrom(page), "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ lc, new_password: pw }),
+    });
+    return { status: res.status, body: await res.text() };
+  }
+
+  it("says plainly when email isn't set up, and sends nothing", async () => {
+    const u = await makeUser();
+    const res = await ask(u.email);
+    expect(await res.text()).toContain("Email isn't set up");
+    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM password_resets").first<{ n: number }>();
+    expect(n!.n).toBe(0);
   });
 
-  it("the owner adds Taylor and resets her password; the old one stops working", async () => {
-    const { cookie } = await owner();
-    const email = `taylor${Date.now()}@example.org`;
-    const added = await post(cookie, "/admin/team/add", { name: "Taylor", email, role: "editor" }, { csrf: await csrfOf(cookie, "/admin/team") });
-    const temp1 = (await added.text()).match(/<code class="big">([^<]+)<\/code>/)![1];
-    expect((await tryLogin(email, temp1)).status).toBe(303);
-    const id = (await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first<{ id: number }>())!.id;
-    const reset = await post(cookie, `/admin/team/${id}/reset`, {}, { csrf: await csrfOf(cookie, "/admin/team") });
-    const temp2 = (await reset.text()).match(/<code class="big">([^<]+)<\/code>/)![1];
-    expect(temp2).not.toBe(temp1);
-    expect((await tryLogin(email, temp1)).status).toBe(401);
-    expect((await tryLogin(email, temp2)).status).toBe(303);
+  it("with email set up: the link works once, and not after 30 minutes", async () => {
+    const { mailer } = await import("../src/email");
+    const sent: any[] = [];
+    const orig = mailer.send;
+    mailer.send = async (_e, m) => { sent.push(m); return { sent: true }; };
+    (env as any).EMAIL = { send: async () => {} };
+    try {
+      const u = await makeUser();
+      await ask(u.email);
+      expect(sent).toHaveLength(1);
+      expect(sent[0].to).toBe(u.email);
+      const link = sent[0].text.match(/https:\/\/example\.com\/admin\/reset\?t=\S+/)[0];
+      expect((await setNew(link, "a fresh long password")).status).toBe(303);
+      expect((await tryLogin(u.email, "a fresh long password")).status).toBe(303);
+      expect((await setNew(link, "another long password")).status).toBe(400); // used up
+
+      await ask(u.email);
+      const link2 = sent[1].text.match(/https:\/\/example\.com\/admin\/reset\?t=\S+/)[0];
+      await env.DB.prepare("UPDATE password_resets SET expires_at = unixepoch() - 1 WHERE used_at IS NULL").run();
+      expect((await setNew(link2, "another long password")).status).toBe(400); // expired
+      await ask("nobody@example.org");
+      expect(sent).toHaveLength(2); // unknown email: same answer, nothing sent
+    } finally {
+      mailer.send = orig;
+      delete (env as any).EMAIL;
+    }
   });
 });

@@ -90,3 +90,8 @@ details > summary::-webkit-details-marker{display:none}
 .tabs a{min-height:60px;display:flex;align-items:center;justify-content:center;text-decoration:none;font-weight:600;color:var(--mut)}
 .tabs a[aria-current=page]{color:var(--fg);box-shadow:inset 0 3px 0 var(--gold)}
 @media (min-width:700px){.tabs{left:50%;transform:translateX(-50%);max-width:560px;border:1px solid var(--line);border-bottom:0;border-radius:12px 12px 0 0}}
+.checkin{list-style:none;padding:0;margin:0;display:grid;gap:8px}
+.checkin li{display:grid;grid-template-columns:52px 1fr;gap:10px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 10px}
+.tick{width:44px;height:44px;border-radius:50%;border:2px solid var(--mut);background:transparent;font-size:22px;color:var(--ok);cursor:pointer}
+.tick.done{border-color:var(--ok);background:var(--okbg)}
+@media print{.tabs,.banner-gold,.back,.sub{display:none}body{background:#fff;color:#000}.checkin li{break-inside:avoid;border-color:#999}}
