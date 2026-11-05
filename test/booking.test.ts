@@ -165,6 +165,17 @@ describe("Stripe webhook", () => {
   });
 });
 
+describe("browser security policy", () => {
+  it("the ticket page lets its form go on to Stripe Checkout; the admin allows only itself", async () => {
+    const id = await tour(5);
+    const formAction = (csp: string | null) => (csp || "").split(";").map((x) => x.trim()).find((x) => x.startsWith("form-action")) || "";
+    const ticket = await SELF.fetch(`${BASE}/tickets/${id}`);
+    expect(formAction(ticket.headers.get("Content-Security-Policy")).split(/\s+/)).toContain("https://checkout.stripe.com");
+    const admin = await SELF.fetch(`${BASE}/admin/login`);
+    expect(formAction(admin.headers.get("Content-Security-Policy"))).toBe("form-action 'self'");
+  });
+});
+
 describe("promotion codes", () => {
   it("checkout accepts codes, and the code used shows on the riders list and spreadsheet", async () => {
     const id = await tour(5);
