@@ -1046,11 +1046,11 @@ const tourRepeat: Handler = async (c) => {
 const tourPage: Handler = async (c, m) => {
   const t = await getTour(c.env.DB, Number(m[1]));
   if (!t) return back("/admin/tours", "That tour doesn't exist.", "err");
-  const bs = await c.env.DB.prepare("SELECT * FROM bookings WHERE tour_id = ? ORDER BY (status = 'paid') DESC, created_at").bind(t.id).all<Booking>();
+  const bs = await c.env.DB.prepare("SELECT b.*, d.code AS promo_code, d.amount_cents AS promo_cents FROM bookings b LEFT JOIN booking_discounts d ON d.booking_id = b.id WHERE b.tour_id = ? ORDER BY (b.status = 'paid') DESC, b.created_at").bind(t.id).all<Booking & { promo_code: string | null; promo_cents: number | null }>();
   const live = bs.results.filter((b) => b.status === "paid" || (b.status === "held" && (b.hold_expires_at ?? 0) > now()));
   const other = bs.results.filter((b) => !live.includes(b));
-  const bRow = (b: Booking) => `<li class="row${b.status === "paid" || b.status === "held" ? "" : " is-hidden"}" id="b-${b.id}"><div class="row-main"><b>${esc(b.name)} · ${b.seats} ticket${b.seats === 1 ? "" : "s"}</b>
-<span class="sub">${esc(SOURCE_NAMES[b.source] || b.source)} · ${statusWords[b.status] || esc(b.status)}${b.amount_cents ? " · " + money(b.amount_cents) : ""} · ${esc(b.ref)}${b.email ? ` · <a href="mailto:${esc(b.email)}">${esc(b.email)}</a>` : ""}${b.phone ? ` · ${esc(b.phone)}` : ""}${b.email_status ? ` · email ${esc(b.email_status)}` : ""}${b.note ? ` · ${esc(b.note)}` : ""}</span></div>
+  const bRow = (b: Booking & { promo_code?: string | null; promo_cents?: number | null }) => `<li class="row${b.status === "paid" || b.status === "held" ? "" : " is-hidden"}" id="b-${b.id}"><div class="row-main"><b>${esc(b.name)} · ${b.seats} ticket${b.seats === 1 ? "" : "s"}</b>
+<span class="sub">${esc(SOURCE_NAMES[b.source] || b.source)} · ${statusWords[b.status] || esc(b.status)}${b.amount_cents ? " · " + money(b.amount_cents) : ""}${b.promo_code ? ` · promo ${esc(b.promo_code)} (−${money(b.promo_cents || 0)})` : ""} · ${esc(b.ref)}${b.email ? ` · <a href="mailto:${esc(b.email)}">${esc(b.email)}</a>` : ""}${b.phone ? ` · ${esc(b.phone)}` : ""}${b.email_status ? ` · email ${esc(b.email_status)}` : ""}${b.note ? ` · ${esc(b.note)}` : ""}</span></div>
 <div class="row-act">${b.status === "paid" ? postButton(c.auth, `/admin/bookings/${b.id}/checkin`, b.checked_in_at ? "✓ Here" : "Check in", b.checked_in_at ? "btn btn-green" : "btn") : ""}</div>
 ${b.status === "paid" || b.status === "held" ? `<details class="danger"><summary>${b.source === "site" && b.status === "paid" ? "Cancel and refund ▾" : "Cancel ▾"}</summary><div class="danger-in"><p>${b.source === "site" && b.status === "paid" ? `Refunds ${money(b.amount_cents)} to their card through Stripe and frees ${b.seats} seat${b.seats === 1 ? "" : "s"}. This can't be undone.` : `Frees ${b.seats} seat${b.seats === 1 ? "" : "s"}.${b.source !== "site" ? ` Refund them on ${esc(SOURCE_NAMES[b.source] || "that site")} yourself if needed.` : ""}`}</p>
 <div class="row-actions">${postButton(c.auth, `/admin/bookings/${b.id}/cancel`, "Yes, cancel" + (b.source === "site" && b.status === "paid" ? " and refund" : ""), "btn btn-red")}</div></div></details>` : ""}</li>`;
@@ -1132,11 +1132,11 @@ const tourPrint: Handler = async (c, m) => {
 };
 
 async function bookingsCsv(c: Ctx, where: string, binds: unknown[], name: string): Promise<Response> {
-  const rows = await c.env.DB.prepare(`SELECT b.*, t.starts_at FROM bookings b JOIN tours t ON t.id = b.tour_id ${where} ORDER BY t.starts_at, b.created_at`).bind(...binds).all<Record<string, any>>();
-  const head = ["tour", "ref", "name", "email", "phone", "tickets", "source", "status", "paid_usd", "checked_in", "booked_at", "note"];
+  const rows = await c.env.DB.prepare(`SELECT b.*, t.starts_at, d.code AS promo_code, d.amount_cents AS promo_cents FROM bookings b JOIN tours t ON t.id = b.tour_id LEFT JOIN booking_discounts d ON d.booking_id = b.id ${where} ORDER BY t.starts_at, b.created_at`).bind(...binds).all<Record<string, any>>();
+  const head = ["tour", "ref", "name", "email", "phone", "tickets", "source", "status", "paid_usd", "promo_code", "promo_off_usd", "checked_in", "booked_at", "note"];
   const lines = [head.join(",")];
   for (const b of rows.results) {
-    lines.push([tourWhen(b.starts_at, { year: true }) + " Central", b.ref, b.name, b.email, b.phone, b.seats, SOURCE_NAMES[b.source] || b.source, statusWords[b.status] || b.status, (b.amount_cents / 100).toFixed(2), b.checked_in_at ? "yes" : "", new Date(b.created_at * 1000).toISOString(), b.note].map(csvCell).join(","));
+    lines.push([tourWhen(b.starts_at, { year: true }) + " Central", b.ref, b.name, b.email, b.phone, b.seats, SOURCE_NAMES[b.source] || b.source, statusWords[b.status] || b.status, (b.amount_cents / 100).toFixed(2), b.promo_code || "", b.promo_cents ? (b.promo_cents / 100).toFixed(2) : "", b.checked_in_at ? "yes" : "", new Date(b.created_at * 1000).toISOString(), b.note].map(csvCell).join(","));
   }
   await audit(c.env.DB, c.auth.user.id, "Downloaded bookings", `${rows.results.length} rows`);
   return text(lines.join("\r\n") + "\r\n", "text/csv; charset=utf-8", 200, { "Content-Disposition": `attachment; filename="${name}"`, "Cache-Control": "no-store" });

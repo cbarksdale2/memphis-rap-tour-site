@@ -8,7 +8,7 @@ export interface FullEnv extends Env {
 }
 
 
-const BACKUP_TABLES = ["schema_version", "users", "settings", "images", "subscribers", "tour_requests", "audit", "counts", "recovery_codes", "tours", "bookings", "stripe_events"];
+const BACKUP_TABLES = ["schema_version", "users", "settings", "images", "subscribers", "tour_requests", "audit", "counts", "recovery_codes", "tours", "bookings", "stripe_events", "booking_discounts"];
 export const KEEP_BACKUPS = 30;
 
 export async function dailyJob(env: FullEnv, t = now()): Promise<string> {
