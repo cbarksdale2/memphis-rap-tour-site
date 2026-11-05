@@ -1,4 +1,5 @@
-# Daily: the site's ticket facts still match the booking page, every page answers, Book still works.
+# Daily: every page answers, Book still works, and the ticket price matches the booking page (our own
+# calendar since the cutover on 5 Nov 2026; Acuity before).
 # Runs at 13:00 UTC (8:00 or 9:00 am New York); the exact hour does not matter for this check.
 # Problems or "could not read" open (or add to) ONE issue; a clean run closes it.
 name: Daily site check
@@ -10,7 +11,7 @@ permissions:
   contents: read
   issues: write
 env:
-  SITE_URL: https://memphis-rap-tour-site.cbarksdale2.workers.dev
+  SITE_URL: https://www.memphisraptour.com
 jobs:
   check:
     runs-on: ubuntu-latest

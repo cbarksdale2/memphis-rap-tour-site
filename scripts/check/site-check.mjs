@@ -40,6 +40,16 @@ export function compare(site, acuity) {
   return problems;
 }
 
+export function readCalendar(html) {
+  return (html.match(/href="\/tickets\/(\d+)"/) || [])[1] || "";
+}
+
+export function compareOwn(site, tourHtml) {
+  const m = tourHtml.match(/\$(\d+(?:\.\d\d)?) each/);
+  if (!m) return ["A tour date page shows no ticket price."];
+  return Number(m[1]) === site.price ? [] : [`Price: the site says $${site.price}, a tour date sells at $${m[1]}.`];
+}
+
 async function get(url, opts = {}) {
   const r = await fetch(url, { headers: { "User-Agent": "MemphisRapTourSiteCheck/1.0 (+github actions)" }, ...opts });
   return r;
@@ -48,6 +58,7 @@ async function get(url, opts = {}) {
 async function main(site) {
   const unread = [];
   const problems = [];
+  let checked = "price, length and days match Acuity";
   let home = "";
   try {
     const r = await get(site + "/");
@@ -69,7 +80,22 @@ async function main(site) {
   try {
     const r = await get(site + "/go/book?from=check", { redirect: "manual" });
     const to = r.headers.get("location") || "";
-    if (r.status !== 302 || !/^https:\/\/app\.acuityscheduling\.com\//.test(to)) problems.push(`Book does not go to the booking page (answered ${r.status}, to "${to}").`);
+    if (r.status === 302 && to === `${new URL(site).origin}/tickets`) {
+      // After the cutover (owner, 5 Nov 2026) Book goes to our own calendar: it must answer, list dates,
+      // and a date's ticket price must match the price the site states.
+      const cal = await get(to);
+      const html = await cal.text();
+      const id = readCalendar(html);
+      checked = "our calendar lists dates and its ticket price matches the site";
+      if (cal.status !== 200) problems.push(`The booking calendar answered ${cal.status}.`);
+      else if (!id) problems.push("The booking calendar shows no open tour dates.");
+      else {
+        const s = home ? readSite(home) : { error: "home page not read" };
+        const tour = await (await get(`${site}/tickets/${id}`)).text();
+        if (s.error) unread.push(s.error);
+        else problems.push(...compareOwn(s, tour));
+      }
+    } else if (r.status !== 302 || !/^https:\/\/app\.acuityscheduling\.com\//.test(to)) problems.push(`Book does not go to a booking page (answered ${r.status}, to "${to}").`);
     else {
       const a = await get(to);
       if (a.status !== 200) problems.push(`The booking page answered ${a.status}.`);
@@ -85,7 +111,7 @@ async function main(site) {
   if (problems.length) lines.push("Problems found:", ...problems.map((p) => `- ${p}`));
   if (unread.length) lines.push("Not read (so not checked):", ...unread.map((p) => `- ${p}`));
   if (!problems.length && !unread.length) {
-    console.log(`site check OK: ${pages.length} pages answered 200; Book reaches the booking page; price, length and days match it.`);
+    console.log(`site check OK: ${pages.length} pages answered 200; Book reaches the booking page; ${checked}.`);
     return 0;
   }
   console.log(lines.join("\n"));
@@ -102,9 +128,11 @@ if (process.argv.includes("--self-test")) {
     ["days changed on Acuity", () => compare(site, { ...a, days: "We offer the tour on Sundays" })],
     ["site price edited", () => compare({ ...site, price: 60 }, a)],
     ["Acuity page reshaped", () => (readAcuity("<html></html>").error ? ["unread"] : [])],
+    ["own calendar price differs", () => compareOwn(site, "<dd>$75 each</dd>")],
+    ["own calendar has no dates", () => (readCalendar("<p>No tour dates</p>") ? [] : ["none"])],
   ];
   const missed = BROKEN.filter(([, f]) => f().length === 0).map(([n]) => n);
-  const clean = compare(site, a);
+  const clean = [...compare(site, a), ...compareOwn(site, "<dd>$70 each</dd>")];
   if (clean.length) { console.error(`NAMED STOP [SELF_TEST_FALSE_ALARM] matching facts reported as drift: ${clean.join(" ")}`); process.exit(1); }
   if (missed.length) { console.error(`NAMED STOP [SELF_TEST_BLIND] not caught: ${missed.join(", ")}`); process.exit(1); }
   console.log(`SELF-TEST OK — ${BROKEN.length} broken shapes caught, matching facts pass`);
