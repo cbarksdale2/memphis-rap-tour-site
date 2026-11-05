@@ -124,6 +124,18 @@ describe("public pages", () => {
     expect(await (await SELF.fetch(`${BASE}/sitemap.xml`)).text()).not.toContain("/about");
   });
 
+  it("never links out to Tripadvisor or Viator; quotes and the rating stay as plain text (owner, 4 Nov 2026)", async () => {
+    for (const p of PAGES) {
+      const { body } = await publicPage(p);
+      expect(body, p).not.toMatch(/href="[^"]*(tripadvisor|viator)/i);
+    }
+    const home = (await publicPage("/")).body;
+    expect(home).toContain("5.0 · 20 reviews on Tripadvisor");
+    expect(home).toContain("— Requill P., Tripadvisor review, Dec 2025");
+    const { rich } = await import("../src/markup");
+    expect(rich("See [our reviews](https://www.tripadvisor.com/x) and [Viator](https://viator.com/y)", {})).not.toContain("<a ");
+  });
+
   it("an unknown page is a 404, not a soft 200", async () => {
     expect((await publicPage("/no-such-page")).status).toBe(404);
   });

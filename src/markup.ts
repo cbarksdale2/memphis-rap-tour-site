@@ -29,8 +29,14 @@ export function fill(s: string, tok: Record<string, string>): string {
 }
 
 /** A link target the admin may use: web, email, or a page on this site. Never javascript: or data:. */
+/** Owner ruling, 4 Nov 2026: the site never links out to Tripadvisor or Viator. */
+export function bannedLink(u: string): boolean {
+  return /^(https?:)?\/\/([a-z0-9-]+\.)*(tripadvisor|viator)\.[a-z.]+(\/|$|\?|#)/i.test(u.trim());
+}
+
 export function safeHref(u: string): string | null {
   const v = u.trim();
+  if (bannedLink(v)) return null;
   if (/^(https?:\/\/|mailto:)[^\s"<>]+$/i.test(v)) return v;
   if (/^\/(?!\/)[^\s"<>]*$/.test(v) || /^#[\w-]*$/.test(v)) return v;
   return null;
