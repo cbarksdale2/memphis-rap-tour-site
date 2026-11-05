@@ -137,7 +137,7 @@ Sitemap: ${origin}/sitemap.xml
 `;
 }
 
-export function llms(c: Content, origin: string): string {
+export function llms(c: Content, origin: string, bookUrl = c.ticket.book_url): string {
   const t = c.ticket;
   const tok = tokens(c);
   const home = c.pages.find((p) => p.slug === "home");
@@ -148,7 +148,7 @@ export function llms(c: Content, origin: string): string {
 ## Key facts
 - Tour length: ${t.duration_text}
 - When: ${t.schedule_long}
-- Ticket: ${t.price_text}, booked online at ${t.book_url}
+- Ticket: ${t.price_text}, booked online at ${bookUrl}
 - Meeting point: ${t.meeting_point}, ${t.locality}, ${t.region} ${t.postal_code}. The tour ends at the same spot.
 - Stops, in order: ${c.stops.map((s) => s.name).join("; ")}
 - Private tours: ${t.private_price_text} for a private buy-out; email ${t.email}

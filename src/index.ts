@@ -155,7 +155,7 @@ async function handle(req: Request, env: FullEnv, ectx: ExecutionContext): Promi
   }
   if (path === "/llms.txt") {
     const ctx = await context(env, url, "published");
-    return text(llms(ctx.c, url.origin), "text/plain; charset=utf-8");
+    return text(llms(ctx.c, url.origin, ctx.bookUrl), "text/plain; charset=utf-8");
   }
   if (path === "/health") return text("ok");
 

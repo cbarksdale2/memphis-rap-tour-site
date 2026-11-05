@@ -143,6 +143,7 @@ export async function startCheckout(env: Env, origin: string, b: Booking, tour: 
     "line_items[0][price_data][unit_amount]": tour.price_cents,
     "line_items[0][price_data][product_data][name]": `Memphis Rap Tour: ${tourWhen(tour.starts_at, { year: true })} Central`,
     allow_promotion_codes: "true", // codes are created in Stripe; the one used is recorded from the webhook
+    "adaptive_pricing[enabled]": "false", // always charge and show US dollars, whatever country the browser is in
     expires_at: now() + 30 * 60, // Stripe's shortest; a late payment after our 15-minute hold is re-checked in the webhook
   }, `checkout-${b.ref}`);
   if (r.status !== 200 || !r.body?.url) {
@@ -233,10 +234,17 @@ export async function recordDiscount(env: Env, bookingId: number, session: any):
   const off = Number(session?.total_details?.amount_discount || 0);
   if (!off) return;
   let code = "";
-  const r = await stripeApi.call(env, "GET", `/checkout/sessions/${encodeURIComponent(String(session.id))}?expand[]=total_details.breakdown.discounts.discount.promotion_code`);
+  // Stripe expands at most 4 levels, so read the breakdown first, then the promotion code by its id.
+  const r = await stripeApi.call(env, "GET", `/checkout/sessions/${encodeURIComponent(String(session.id))}?expand[]=total_details.breakdown`);
   if (r.status === 200) {
     const d = r.body?.total_details?.breakdown?.discounts?.[0]?.discount;
-    code = String(d?.promotion_code?.code || d?.coupon?.name || d?.coupon?.id || "");
+    const pc = d?.promotion_code;
+    if (pc && typeof pc === "object") code = String(pc.code || "");
+    else if (typeof pc === "string") {
+      const p = await stripeApi.call(env, "GET", `/promotion_codes/${encodeURIComponent(pc)}`);
+      if (p.status === 200) code = String(p.body?.code || "");
+    }
+    if (!code) code = String(d?.coupon?.name || d?.coupon?.id || "");
   }
   await env.DB.prepare("INSERT OR REPLACE INTO booking_discounts (booking_id, code, amount_cents, created_at) VALUES (?, ?, ?, ?)")
     .bind(bookingId, code || "code not read", off, now())
