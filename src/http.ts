@@ -35,9 +35,11 @@ const BASE_HEADERS: Record<string, string> = {
   "X-Frame-Options": "DENY",
 };
 
+// form-action also governs where a form's redirect may land: the ticket form posts here and the server
+// sends the browser on to Stripe Checkout, so the public pages must allow that one host.
 export const PUBLIC_CSP =
   "default-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; script-src 'none'; " +
-  "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'";
+  "form-action 'self' https://checkout.stripe.com; frame-ancestors 'none'; base-uri 'none'; object-src 'none'";
 export const ADMIN_CSP =
   "default-src 'self'; img-src 'self' data: blob:; style-src 'self'; font-src 'self'; script-src 'self'; " +
   "form-action 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'";
