@@ -20,7 +20,10 @@ beforeEach(() => {
     calls.push({ method, path, params });
     if (path === "/checkout/sessions") return { status: 200, body: { id: `cs_test_${params["metadata[ref]"]}`, url: `https://checkout.stripe.com/c/pay/cs_test_${params["metadata[ref]"]}` } };
     if (path === "/refunds") return refundFails ? { status: 400, body: { error: { message: "card declined refund" } } } : { status: 200, body: { id: "re_1" } };
-    if (path.startsWith("/checkout/sessions/") && path.includes("expand")) return { status: 200, body: { total_details: { breakdown: { discounts: [{ discount: { promotion_code: { code: "MRTTEST5" } } }] } } } };
+    // Like Stripe: more than 4 expand levels is refused; the breakdown gives the promotion code's id only.
+    if (path.includes("expand[]=total_details.breakdown.discounts")) return { status: 400, body: { error: { message: "You cannot expand more than 4 levels of a property." } } };
+    if (path.startsWith("/checkout/sessions/") && path.includes("expand[]=total_details.breakdown")) return { status: 200, body: { total_details: { breakdown: { discounts: [{ discount: { promotion_code: "promo_123" } }] } } } };
+    if (path === "/promotion_codes/promo_123") return { status: 200, body: { id: "promo_123", code: "MRTTEST5" } };
     if (path.startsWith("/checkout/sessions/")) return { status: 200, body: { payment_status: "unpaid" } };
     return { status: 404, body: {} };
   };
@@ -180,7 +183,10 @@ describe("promotion codes", () => {
   it("checkout accepts codes, and the code used shows on the riders list and spreadsheet", async () => {
     const id = await tour(5);
     const res = await checkout(id, 1, "promo@example.org");
-    expect(calls.find((c) => c.path === "/checkout/sessions")!.params.allow_promotion_codes).toBe("true");
+    const created = calls.find((c) => c.path === "/checkout/sessions")!.params;
+    expect(created.allow_promotion_codes).toBe("true");
+    expect(created["adaptive_pricing[enabled]"]).toBe("false"); // US dollars, never a converted local currency
+    expect(created["line_items[0][price_data][currency]"]).toBe("usd");
     const sid = new URL(res.headers.get("Location")!).pathname.split("/").pop()!;
     const ev = paidEvent("evt_promo", sid, "pi_promo", 500);
     (ev.data.object as any).total_details = { amount_discount: 6500 };
@@ -276,6 +282,10 @@ describe("modes and money safety", () => {
     expect((await SELF.fetch(`${BASE}/go/book`, { redirect: "manual" })).headers.get("Location")).toContain("acuityscheduling.com");
     await env.DB.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('booking_mode', 'own')").run();
     expect((await SELF.fetch(`${BASE}/go/book`, { redirect: "manual" })).headers.get("Location")).toBe(`${BASE}/tickets`);
+    for (const p of ["/", "/book", "/faq", "/private-tours", "/llms.txt"]) {
+      const body = await (await SELF.fetch(`${BASE}${p}`)).text();
+      expect(body, p).not.toContain("acuityscheduling.com");
+    }
     await env.DB.prepare("UPDATE settings SET value = 'acuity' WHERE key = 'booking_mode'").run();
   });
 });
