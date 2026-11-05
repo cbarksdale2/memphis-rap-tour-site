@@ -1,5 +1,6 @@
 // Sections: add, edit, reorder, hide, remove; drafts stay off the live site until Publish; preview shows
 // the draft; every save is a version; restore brings the live site back exactly.
+import { SELF } from "cloudflare:test";
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { csrfOf, flash, get, owner, post, publicPage } from "./helpers";
@@ -87,7 +88,7 @@ describe("sections", () => {
 
   it("refuses an unsafe link in a section", async () => {
     const { cookie } = await owner();
-    const res = await post(cookie, "/admin/sections/home-about", { heading: "x", body: "y", image: "", link_text: "Go", link_href: "javascript:alert(1)" }, { csrf: await csrfOf(cookie, "/admin/sections/home-about") });
+    const res = await post(cookie, "/admin/sections/home-private", { label: "x", heading: "x", body: "y", price: "", subtext: "", button_text: "Go", button_href: "javascript:alert(1)", style: "dark" }, { csrf: await csrfOf(cookie, "/admin/sections/home-private") });
     expect(flash(res)).toContain("must be a web address");
   });
 
@@ -98,6 +99,28 @@ describe("sections", () => {
     expect(preview).not.toContain("<script>alert(1)</script>");
     expect(preview).not.toContain("<img src=x");
     expect(preview).toContain("&lt;script&gt;");
+  });
+});
+
+describe("removing a page", () => {
+  it("removes it from the site, sends its address to the home page, and History brings it back", async () => {
+    const { cookie } = await owner();
+    await publicPage("/");
+    const before = (await env.DB.prepare("SELECT value FROM settings WHERE key = 'published_version'").first<{ value: string }>())!.value;
+    const res = await post(cookie, "/admin/pages/privacy/remove", {}, { csrf: await csrfOf(cookie, "/admin/pages/privacy") });
+    expect(flash(res)).toContain("now sends visitors to the home page");
+    expect((await publicPage("/privacy")).status).toBe(200); // not live until Publish
+    await post(cookie, "/admin/publish", {});
+    const gone = await publicPage("/privacy");
+    expect(gone.status).toBe(301);
+    expect(gone.res.headers.get("Location")).toBe("/");
+    const home = (await publicPage("/")).body;
+    expect(home).not.toContain('href="/privacy"');
+    expect(await (await SELF.fetch("https://example.com/sitemap.xml")).text()).not.toContain("/privacy");
+    expect(await (await SELF.fetch("https://example.com/llms.txt")).text()).not.toContain("/privacy");
+    expect((await post(cookie, "/admin/pages/home/remove", {}, { csrf: await csrfOf(cookie, "/admin/pages/home") })).headers.get("Location")).toContain("err=");
+    await post(cookie, `/admin/history/${before}/restore`, {}, { csrf: await csrfOf(cookie, "/admin/history") });
+    expect((await publicPage("/privacy")).status).toBe(200);
   });
 });
 

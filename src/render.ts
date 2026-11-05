@@ -202,7 +202,7 @@ export function layout(ctx: RenderCtx, page: Page, mainHtml: string, opts: { sta
   const url = ctx.origin + (page.path === "/" ? "/" : page.path);
   const title = plain(page.title, tok);
   const desc = plain(page.description, tok);
-  const og = `${ctx.origin}/og/${page.slug === "home" || !["route", "book", "reviews", "private", "faq", "about"].includes(page.slug) ? "home" : page.slug}.png`;
+  const og = `${ctx.origin}/og/${page.slug === "home" || !["route", "book", "reviews", "private", "faq"].includes(page.slug) ? "home" : page.slug}.png`;
   const book = esc(bookLink(page.slug));
   const inner = page.slug !== "home";
   const crumbs = inner && page.path.startsWith("/")

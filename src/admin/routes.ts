@@ -353,6 +353,7 @@ ${p.slug !== "home" ? field("nav_label", "Name in menus", p.nav_label, { require
 <p class="hint">Tip: {price}, {duration}, {schedule_long}, {private_price} and {email} fill in from Tour info.</p>
 <div class="savebar"><button class="btn btn-green" type="submit">Save ✓</button><a class="btn btn-quiet" href="/admin/preview${esc(p.path)}">Preview ›</a></div>
 </form>
+${owner && p.slug !== "home" ? `<div class="apart">${confirmRemove(c.auth, `/admin/pages/${p.slug}/remove`, "this page", `Its address ${p.path} will send visitors to the home page.`)}</div>` : ""}
 `);
 };
 
@@ -369,6 +370,26 @@ const pageSave: Handler = async (c, m) => {
   if (!r.ok) return back(`/admin/pages/${slug}`, r.error, "err", "words");
   await audit(c.env.DB, c.auth.user.id, "Edited page words", slug);
   return back(`/admin/pages/${slug}`, "Saved. Not live until you publish.", "ok", "words");
+};
+
+const pageRemove: Handler = async (c, m) => {
+  const denied = ownerOnly(c);
+  if (denied) return denied;
+  const slug = m[1];
+  let path = "", name = "";
+  const r = await saveDraft(c.env.DB, c.auth.user.id, `Removed the ${slug} page`, (ct) => {
+    if (slug === "home") return "The home page can't be removed.";
+    const i = ct.pages.findIndex((p) => p.slug === slug);
+    if (i < 0) return "That page doesn't exist.";
+    path = ct.pages[i].path; name = ct.pages[i].nav_label;
+    ct.pages.splice(i, 1);
+    ct.redirects = { ...(ct.redirects || {}), [path]: "/" };
+    // Links to the removed page inside other sections go to the home page instead.
+    for (const p of ct.pages) for (const sec of p.sections) for (const k of Object.keys(sec.data)) if (sec.data[k] === path) sec.data[k] = "/";
+  });
+  if (!r.ok) return back(`/admin/pages/${slug}`, r.error, "err");
+  await audit(c.env.DB, c.auth.user.id, "Removed a page", `${name} (${path} now goes to the home page)`);
+  return back("/admin/pages", `Removed ${name}. ${path} now sends visitors to the home page. Not live until you publish.`);
 };
 
 const sectionAdd: Handler = async (c, m) => {
@@ -598,7 +619,7 @@ ${kind === "reviews" ? '<p class="sub">Keep quotes short and credited, with a li
 <details class="card"><summary>+ Add a ${esc(L.one)}</summary><form method="post" action="/admin/${kind}/add" class="stack">${csrf(c.auth)}
 ${L.fields.map(([k, l, ta]) => field(k, l, kind === "reviews" && k === "url" ? content.site.rating_url : "", { textarea: ta, rows: 4 })).join("")}
 <div class="row-actions"><button class="btn btn-green" type="submit">+ Add</button></div></form></details>
-${owner ? "" : ""}`);
+`);
 };
 
 function listItemFromForm(c: Ctx, kind: ListKind): Record<string, any> | string {
@@ -1178,6 +1199,7 @@ const ROUTES: [RegExp, string, Handler][] = [
   [/^\/admin\/pages\/([a-z-]+)$/, "GET", pageEdit],
   [/^\/admin\/pages\/([a-z-]+)$/, "POST", pageSave],
   [/^\/admin\/pages\/([a-z-]+)\/add$/, "POST", sectionAdd],
+  [/^\/admin\/pages\/([a-z-]+)\/remove$/, "POST", pageRemove],
   [/^\/admin\/sections\/([\w-]+)$/, "GET", sectionEdit],
   [/^\/admin\/sections\/([\w-]+)$/, "POST", sectionSave],
   [/^\/admin\/sections\/([\w-]+)\/move$/, "POST", sectionMove],
