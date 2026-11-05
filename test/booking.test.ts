@@ -20,6 +20,7 @@ beforeEach(() => {
     calls.push({ method, path, params });
     if (path === "/checkout/sessions") return { status: 200, body: { id: `cs_test_${params["metadata[ref]"]}`, url: `https://checkout.stripe.com/c/pay/cs_test_${params["metadata[ref]"]}` } };
     if (path === "/refunds") return refundFails ? { status: 400, body: { error: { message: "card declined refund" } } } : { status: 200, body: { id: "re_1" } };
+    if (path.startsWith("/checkout/sessions/") && path.includes("expand")) return { status: 200, body: { total_details: { breakdown: { discounts: [{ discount: { promotion_code: { code: "MRTTEST5" } } }] } } } };
     if (path.startsWith("/checkout/sessions/")) return { status: 200, body: { payment_status: "unpaid" } };
     return { status: 404, body: {} };
   };
@@ -161,6 +162,34 @@ describe("Stripe webhook", () => {
     // Stripe resends the same event: no second refund request.
     expect((await (await webhook(paidEvent("evt_late_full", sid, "pi_late"))).json<any>()).outcome).toBe("duplicate");
     expect(calls.filter((c) => c.path === "/refunds")).toHaveLength(1);
+  });
+});
+
+describe("promotion codes", () => {
+  it("checkout accepts codes, and the code used shows on the riders list and spreadsheet", async () => {
+    const id = await tour(5);
+    const res = await checkout(id, 1, "promo@example.org");
+    expect(calls.find((c) => c.path === "/checkout/sessions")!.params.allow_promotion_codes).toBe("true");
+    const sid = new URL(res.headers.get("Location")!).pathname.split("/").pop()!;
+    const ev = paidEvent("evt_promo", sid, "pi_promo", 500);
+    (ev.data.object as any).total_details = { amount_discount: 6500 };
+    expect((await (await webhook(ev)).json<any>()).outcome).toBe("paid");
+    const b = await env.DB.prepare("SELECT b.amount_cents, d.code, d.amount_cents AS off FROM bookings b JOIN booking_discounts d ON d.booking_id = b.id WHERE b.stripe_session_id = ?").bind(sid).first<any>();
+    expect(b).toEqual({ amount_cents: 500, code: "MRTTEST5", off: 6500 });
+    const { cookie } = await owner();
+    expect(await (await get(cookie, `/admin/tours/${id}`)).text()).toContain("promo MRTTEST5 (−$65)");
+    const csv = await (await get(cookie, `/admin/tours/${id}.csv`)).text();
+    expect(csv.split("\r\n")[0]).toContain("promo_code,promo_off_usd");
+    expect(csv).toContain("MRTTEST5,65.00");
+  });
+
+  it("a booking without a code records no discount", async () => {
+    const id = await tour(5);
+    const res = await checkout(id, 1);
+    const sid = new URL(res.headers.get("Location")!).pathname.split("/").pop()!;
+    await webhook(paidEvent("evt_nopromo", sid));
+    const n = await env.DB.prepare("SELECT COUNT(*) AS n FROM booking_discounts d JOIN bookings b ON b.id = d.booking_id WHERE b.stripe_session_id = ?").bind(sid).first<{ n: number }>();
+    expect(n!.n).toBe(0);
   });
 });
 

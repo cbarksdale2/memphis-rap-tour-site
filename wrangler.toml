@@ -32,6 +32,9 @@ crons = ["0 9 * * *"]
 [vars]
 # The one host search engines should index. Every other host (workers.dev) answers noindex.
 CANONICAL_HOST = "www.memphisraptour.com"
+# Stripe: "live" accepts only a live key (sk_live_), "test" only a test key. Owner ruling 5 Nov 2026: live,
+# for a $5 test booking first. Book buttons still go to Acuity until the admin switch is flipped.
+STRIPE_MODE = "live"
 
 # Secrets (set with `wrangler secret put`, values from the vault, never in this file):
 #   UNSUB_SECRET  signs unsubscribe links

@@ -83,8 +83,10 @@ Status: **built and tested against Stripe in test mode. Book buttons still go to
 
 ### Cutover from Acuity (only with Carlos's yes)
 
-1. Live keys saved (steps 2–4 with live-mode values), and `STRIPE_MODE = "live"` set in `wrangler.toml`
-   through a PR. A live key is refused while that says anything else.
+1. Live keys saved (steps 2–4 with live-mode values: vault `STRIPE_SECRET_KEY_MRT`, `STRIPE_WEBHOOK_SECRET_MRT`).
+   `STRIPE_MODE = "live"` is set in `wrangler.toml` (5 Nov 2026). In live mode a test key is refused, so
+   online checkout stays off until the live key is on the Worker.
+   Promotion codes work at checkout (made in Stripe); the riders list shows the code used and the amount off.
 2. Carlos makes one real booking on `/tickets` and refunds it from the admin.
 3. Admin › Tours › Online booking set-up › "Switch Book buttons to this site". The switch refuses until
    1 and 2 are true. "Send Book buttons back to Acuity" undoes it at once.

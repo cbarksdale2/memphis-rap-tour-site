@@ -142,6 +142,7 @@ export async function startCheckout(env: Env, origin: string, b: Booking, tour: 
     "line_items[0][price_data][currency]": "usd",
     "line_items[0][price_data][unit_amount]": tour.price_cents,
     "line_items[0][price_data][product_data][name]": `Memphis Rap Tour: ${tourWhen(tour.starts_at, { year: true })} Central`,
+    allow_promotion_codes: "true", // codes are created in Stripe; the one used is recorded from the webhook
     expires_at: now() + 30 * 60, // Stripe's shortest; a late payment after our 15-minute hold is re-checked in the webhook
   }, `checkout-${b.ref}`);
   if (r.status !== 200 || !r.body?.url) {
@@ -201,6 +202,7 @@ export async function handleStripeEvent(env: Env, ev: any, onPaid: (b: Booking, 
       .run();
     const tour = (await getTour(db, b.tour_id))!;
     if (upd.meta.changes === 1) {
+      await recordDiscount(env, b.id, obj);
       if (obj.livemode === false) await db.prepare("UPDATE bookings SET note = TRIM(note || ' TEST PAYMENT: no real money') WHERE id = ?").bind(b.id).run();
       const paid = (await db.prepare("SELECT * FROM bookings WHERE id = ?").bind(b.id).first<Booking>())!;
       await onPaid(paid, tour);
@@ -224,6 +226,21 @@ export async function handleStripeEvent(env: Env, ev: any, onPaid: (b: Booking, 
     return "refunded";
   }
   return "ignored";
+}
+
+/** If a promotion code took money off, record which code and how much (asks Stripe for the code's name). */
+export async function recordDiscount(env: Env, bookingId: number, session: any): Promise<void> {
+  const off = Number(session?.total_details?.amount_discount || 0);
+  if (!off) return;
+  let code = "";
+  const r = await stripeApi.call(env, "GET", `/checkout/sessions/${encodeURIComponent(String(session.id))}?expand[]=total_details.breakdown.discounts.discount.promotion_code`);
+  if (r.status === 200) {
+    const d = r.body?.total_details?.breakdown?.discounts?.[0]?.discount;
+    code = String(d?.promotion_code?.code || d?.coupon?.name || d?.coupon?.id || "");
+  }
+  await env.DB.prepare("INSERT OR REPLACE INTO booking_discounts (booking_id, code, amount_cents, created_at) VALUES (?, ?, ?, ?)")
+    .bind(bookingId, code || "code not read", off, now())
+    .run();
 }
 
 /** Cancel a booking from the admin. A paid site booking is refunded through Stripe first. */
