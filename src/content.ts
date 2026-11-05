@@ -67,6 +67,8 @@ export interface Content {
   faqs: Faq[];
   reviews: Review[];
   pages: Page[];
+  /** Retired page paths and where they now send visitors (301). Kept in the content, so History restores it. */
+  redirects?: Record<string, string>;
 }
 
 export interface BlockField { k: string; t: "line" | "text" | "check" | "number" | "link" | "image" | "images" | "select"; l: string; options?: string[]; hint?: string }
@@ -263,7 +265,6 @@ export function seedContent(): Content {
           s("home-private", "cta", { label: "Private tours", heading: "Take the whole bus for your group", body: "Birthdays, reunions, work trips, a crew in town for a show: book the bus just for you.", price: "{private_price}", subtext: "For a private buy-out. Email us with your date and how many are riding.", button_text: "Email {email}", button_href: "mailto:{email}", style: "dark" }),
           s("home-faq", "faq", { heading: "Questions people ask", limit: "0" }),
           s("home-signup", "signup", { heading: "Get new tour dates by email", body: "New dates, private tour openings and Memphis rap news from the team." }),
-          s("home-about", "image_text", { heading: "Who runs the tour?", body: "Memphis Rap Tour is a local Memphis company owned by Carlos Barksdale.", image: "bus", link_text: "More about us ›", link_href: "/about" }),
         ],
       },
       {
@@ -331,18 +332,6 @@ export function seedContent(): Content {
         ],
       },
       {
-        slug: "about", path: "/about", nav_label: "About", in_nav: true,
-        title: "About Memphis Rap Tour",
-        description: "Who runs Memphis Rap Tour: a local Memphis company owned by Carlos Barksdale, running a guided bus tour of Memphis rap and hip hop history from Beale Street.",
-        h1: "About Memphis Rap Tour",
-        intro: "Memphis Rap Tour is a local Memphis company owned by Carlos Barksdale. It runs a guided bus tour of the neighborhoods, venues and landmarks behind Memphis rap and hip hop, starting and ending on Beale Street.",
-        sections: [
-          s("about-who", "image_text", { heading: "Who runs the tour?", body: "Memphis Rap Tour is owned by Carlos Barksdale and run by a Memphis team. Tours leave Beale Street {schedule_long}.", image: "bus", link_text: "", link_href: "" }),
-          s("about-contact", "text", { heading: "How do I reach the team?", body: "Email [{email}](mailto:{email}). You can also find us on [Instagram @memphisraptour](https://www.instagram.com/memphisraptour/) and [TikTok @memphis.rap.tour](https://www.tiktok.com/@memphis.rap.tour)." }),
-          s("about-cta", "cta", { label: "Ready to ride?", heading: "Book a seat on the bus", body: "{duration}, {schedule_long}. Tickets are {price}.", price: "", subtext: "", button_text: "Book a seat ›", button_href: "{book_url}", style: "gold" }),
-        ],
-      },
-      {
         slug: "privacy", path: "/privacy", nav_label: "Privacy", in_nav: false,
         title: "Privacy | Memphis Rap Tour",
         description: "What the Memphis Rap Tour website collects, why, and how to unsubscribe from the email list.",
@@ -358,6 +347,8 @@ export function seedContent(): Content {
         ],
       },
     ],
+    // Owner, 4 Nov 2026: the About page and the "Who runs the tour?" section were removed.
+    redirects: { "/about": "/" },
   };
 }
 

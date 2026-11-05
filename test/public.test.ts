@@ -5,7 +5,7 @@ import { SELF } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { BASE, publicPage } from "./helpers";
 
-const PAGES = ["/", "/memphis-hip-hop-tour", "/book", "/reviews", "/private-tours", "/faq", "/about", "/privacy"];
+const PAGES = ["/", "/memphis-hip-hop-tour", "/book", "/reviews", "/private-tours", "/faq", "/privacy"];
 const ACUITY = "https://app.acuityscheduling.com/schedule.php?owner=35599844";
 const PHONE = /(\+?1[\s.-]?)?\(?\b\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}\b/;
 
@@ -110,6 +110,18 @@ describe("public pages", () => {
     const admin = await SELF.fetch(`${BASE}/admin/login`);
     expect(admin.headers.get("X-Robots-Tag")).toContain("noindex");
     expect(admin.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  it("the removed About page sends visitors to the home page, and no page links to it or says who runs the tour", async () => {
+    const r = await publicPage("/about");
+    expect(r.status).toBe(301);
+    expect(r.res.headers.get("Location")).toBe("/");
+    for (const p of PAGES) {
+      const { body } = await publicPage(p);
+      expect(body).not.toContain('href="/about"');
+      expect(body).not.toContain("Who runs the tour");
+    }
+    expect(await (await SELF.fetch(`${BASE}/sitemap.xml`)).text()).not.toContain("/about");
   });
 
   it("an unknown page is a 404, not a soft 200", async () => {

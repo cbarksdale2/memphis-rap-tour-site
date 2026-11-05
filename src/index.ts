@@ -45,6 +45,8 @@ function publicHtml(body: string, ctx: RenderCtx, status = 200, etag?: string): 
 async function renderPath(env: Env, url: URL, path: string, which: "published" | "draft", preview: boolean): Promise<Response> {
   const ctx = await context(env, url, which, preview);
   const page = ctx.c.pages.find((p) => p.path === path);
+  const moved = !page ? ctx.c.redirects?.[path] : undefined;
+  if (moved && /^\/(?!\/)/.test(moved)) return redirect((preview ? "/admin/preview" : "") + moved, 301);
   if (!page) return publicHtml(simplePage(ctx, "Page not found", `<p>That page isn't here. <a href="/">Go to the home page ›</a></p>`), ctx, 404);
   const out = publicHtml(renderPage(page, ctx), ctx);
   if (preview) {

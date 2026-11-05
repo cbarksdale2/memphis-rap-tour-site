@@ -45,7 +45,7 @@ async function main() {
   // 1. public pages
   const sm = await (await req(null, "/sitemap.xml")).text();
   const pages = [...sm.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => new URL(m[1]).pathname);
-  ok("sitemap lists the pages", pages.length >= 8, `${pages.length} pages`);
+  ok("sitemap lists the pages", pages.length >= 7, `${pages.length} pages`);
   for (const p of pages) {
     const r = await req(null, p);
     const body = await r.text();
