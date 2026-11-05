@@ -17,7 +17,7 @@ import {
 } from "../content";
 import { adminDate, esc, type Env, html, now, randomToken, redirect, text } from "../http";
 import { checkUpload, dropBytes, listImages, newImageId, storeImage, usage } from "../images";
-import { plain, safeHref, tokens } from "../markup";
+import { bannedLink, plain, safeHref, tokens } from "../markup";
 import { imageUrl, type RenderCtx } from "../render";
 import { csvCell, dayKey, unsubUrl } from "../subscribe";
 import { check, confirmRemove, csrf, field, frame, postButton, row } from "./ui";
@@ -290,7 +290,7 @@ const more: Handler = async (c) => {
 ${row("Tour info", "Price, length, times, meeting point and stops shown on the site", '<a href="/admin/tour">Open ›</a>')}
 ${row("Private tour requests", "Groups asking for a private tour", '<a href="/admin/requests">Open ›</a>')}
 ${row("Questions (FAQ)", "Add, edit and order the questions", '<a href="/admin/faq">Open ›</a>')}
-${row("Reviews", "Short quotes from Tripadvisor", '<a href="/admin/reviews">Open ›</a>')}
+${row("Reviews", "Short quotes from Tripadvisor reviews (shown without links)", '<a href="/admin/reviews">Open ›</a>')}
 ${row("Photos", "Upload, describe and remove photos", '<a href="/admin/images">Open ›</a>')}
 ${row("History", "Every save, who made it, and one-tap restore", '<a href="/admin/history">Open ›</a>')}
 ${owner ? row("Email list", "Everyone who signed up, and a spreadsheet download", '<a href="/admin/subscribers">Open ›</a>') : ""}
@@ -516,7 +516,7 @@ const sectionSave: Handler = async (c, m) => {
       if (fd.t === "check") data[fd.k] = F(c).get(fd.k) ? "1" : "";
       else if (fd.t === "images") data[fd.k] = F(c).getAll(fd.k).map(String).filter((x) => imgs.has(x)).join(",");
       else if (fd.t === "image") { const v = S(c, fd.k); if (v && !imgs.has(v)) return "Pick a photo from the list."; data[fd.k] = v; }
-      else if (fd.t === "link") { const v = cleanLink(S(c, fd.k), ct); if (v === null) return `"${fd.l}" must be a web address, mailto: email or a page like /faq.`; data[fd.k] = v; }
+      else if (fd.t === "link") { if (bannedLink(plain(S(c, fd.k), tokens(ct)))) return "The site doesn't link to Tripadvisor or Viator (Carlos, 4 Nov 2026)."; const v = cleanLink(S(c, fd.k), ct); if (v === null) return `"${fd.l}" must be a web address, mailto: email or a page like /faq.`; data[fd.k] = v; }
       else if (fd.t === "number") data[fd.k] = String(Math.max(0, Math.min(50, Number(S(c, fd.k)) || 0)));
       else if (fd.t === "select") data[fd.k] = (fd.options || []).includes(S(c, fd.k)) ? S(c, fd.k) : (fd.options || [""])[0];
       else data[fd.k] = S(c, fd.k).slice(0, 5000);
@@ -587,7 +587,7 @@ const tourSave: Handler = async (c) => {
 type ListKind = "faq" | "reviews";
 const LISTS: Record<ListKind, { title: string; one: string; fields: [string, string, boolean][] }> = {
   faq: { title: "Questions (FAQ)", one: "question", fields: [["q", "Question", false], ["a", "Answer (about 40 to 60 words)", true]] },
-  reviews: { title: "Reviews", one: "review", fields: [["quote", "Short quote (under 25 words)", true], ["author", "Name, like Amy A.", false], ["date", "Month, like Jan 2026", false], ["url", "Link to the full review", false]] },
+  reviews: { title: "Reviews", one: "review", fields: [["quote", "Short quote (under 25 words)", true], ["author", "Name, like Amy A.", false], ["date", "Month, like Jan 2026", false]] },
 };
 const listOf = (ct: Content, k: ListKind) => (k === "faq" ? ct.faqs : ct.reviews) as unknown as Array<Record<string, any>>;
 
@@ -614,10 +614,10 @@ ${confirmRemove(c.auth, `/admin/${kind}/${it.id}/delete`, `this ${L.one}`)}</det
     .join("");
   return page(c, { title: L.title, tab: "more", back: { href: "/admin/more", label: "More" }, flash: flashFrom(c.url) }, `
 <h1>${esc(L.title)}</h1>
-${kind === "reviews" ? '<p class="sub">Keep quotes short and credited, with a link to the full review. No Tripadvisor photos.</p>' : ""}
+${kind === "reviews" ? '<p class="sub">Keep quotes short and credited by name. They show as "Tripadvisor review" with no link, and no Tripadvisor photos.</p>' : ""}
 <ul class="rows">${rows}</ul>
 <details class="card"><summary>+ Add a ${esc(L.one)}</summary><form method="post" action="/admin/${kind}/add" class="stack">${csrf(c.auth)}
-${L.fields.map(([k, l, ta]) => field(k, l, kind === "reviews" && k === "url" ? content.site.rating_url : "", { textarea: ta, rows: 4 })).join("")}
+${L.fields.map(([k, l, ta]) => field(k, l, "", { textarea: ta, rows: 4 })).join("")}
 <div class="row-actions"><button class="btn btn-green" type="submit">+ Add</button></div></form></details>
 `);
 };
@@ -629,7 +629,6 @@ function listItemFromForm(c: Ctx, kind: ListKind): Record<string, any> | string 
   if (kind === "faq" && (!out.q || !out.a)) return "A question needs both the question and the answer.";
   if (kind === "reviews") {
     if (!out.quote || !out.author) return "A review needs the quote and the name.";
-    if (!/^https:\/\/[^\s"<>]+$/.test(out.url)) return "The review link must start with https://";
     out.quote = out.quote.replace(/^["“]|["”]$/g, "");
   }
   return out;
@@ -654,6 +653,7 @@ const listSave: Handler = async (c, m) => {
     const it = listOf(ct, kind).find((x) => x.id === id);
     if (!it) return "That item doesn't exist.";
     Object.assign(it, item, { id });
+    delete it.url; // reviews are never linked out (owner, 4 Nov 2026)
   });
   if (!r.ok) return back(`/admin/${kind}`, r.error, "err");
   await audit(c.env.DB, c.auth.user.id, `Edited a ${LISTS[kind].one}`);

@@ -62,7 +62,7 @@ function facts(ctx: RenderCtx): string {
 function rating(ctx: RenderCtx): string {
   const s = ctx.c.site;
   if (!s.rating_text) return "";
-  return `<p class="rating"><span class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><a href="${esc(safeHref(s.rating_url) || "#")}">${esc(s.rating_text)} ›</a></p>`;
+  return `<p class="rating"><span class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><span>${esc(s.rating_text)}</span></p>`;
 }
 
 function heading(tag: string, text: string, tok: Record<string, string>): string {
@@ -111,7 +111,7 @@ ${d.note ? `<p class="sub">${line(d.note, tok)}</p>` : ""}</section>`;
       const list = ctx.c.reviews.filter((r) => !r.hidden);
       const limit = Number(d.limit) || 0;
       const q = (r: (typeof list)[number]) =>
-        `<blockquote class="q"><p>"${esc(r.quote)}"</p><cite>${esc(r.author)}${r.date ? `, ${esc(r.date)}` : ""}, on <a href="${esc(safeHref(r.url) || "#")}">Tripadvisor</a></cite></blockquote>`;
+        `<blockquote class="q"><p>"${esc(r.quote)}"</p><cite>— ${esc(r.author)}, Tripadvisor review${r.date ? `, ${esc(r.date)}` : ""}</cite></blockquote>`;
       const first = limit ? list.slice(0, limit) : list;
       const rest = limit ? list.slice(limit) : [];
       return `<section class="sec" id="${id}">${heading("h2", d.heading, tok)}${d.body ? `<div class="prose">${rich(d.body, tok)}</div>` : ""}

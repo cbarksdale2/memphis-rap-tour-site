@@ -1,5 +1,5 @@
 // Structured data and the crawl files. Only what the visible page supports; no phone number, no ratings
-// markup (the rating belongs to Tripadvisor, so it is shown as a linked line, not claimed as ours).
+// markup (the rating belongs to Tripadvisor, so it is shown as a plain-text line, not claimed as ours).
 import type { Content, Page } from "./content";
 import { isoDate } from "./http";
 import { plain, safeHref, tokens } from "./markup";

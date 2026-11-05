@@ -50,14 +50,14 @@ export interface SiteInfo {
   instagram: string;
   tiktok: string;
   rating_text: string;
-  rating_url: string;
+  rating_url?: string;
   footer_location: string;
   disclaimer: string;
   consent_text: string;
 }
 
 export interface Faq { id: string; q: string; a: string; hidden: boolean }
-export interface Review { id: string; quote: string; author: string; date: string; url: string; hidden: boolean }
+export interface Review { id: string; quote: string; author: string; date: string; url?: string; hidden: boolean }
 export interface Stop { name: string }
 
 export interface Content {
@@ -181,7 +181,6 @@ export function newId(prefix: string): string {
   return `${prefix}${Date.now().toString(36)}${idCounter.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
 
-const TA = "https://www.tripadvisor.com/AttractionProductReview-g55197-d33472036-Memphis_Rap_and_Hip_Hop_Tour-Memphis_Tennessee.html";
 const BOOK = "https://app.acuityscheduling.com/schedule.php?owner=35599844";
 
 function s(id: string, type: BlockType, data: Record<string, string>): Section {
@@ -223,7 +222,6 @@ export function seedContent(): Content {
       instagram: "https://www.instagram.com/memphisraptour/",
       tiktok: "https://www.tiktok.com/@memphis.rap.tour",
       rating_text: "5.0 · 20 reviews on Tripadvisor (as of 3 Nov 2026)",
-      rating_url: TA,
       footer_location: "Memphis, TN · Starts and ends downtown on Beale Street",
       disclaimer:
         "The Memphis Rap & Hip Hop Tour is an independently operated tour and is not affiliated with, endorsed by, or sponsored by any of the artists, estates, record labels, or businesses mentioned during the tour.",
@@ -243,12 +241,12 @@ export function seedContent(): Content {
       { id: "f7", q: "Can we book a private tour?", a: "Yes. A private buy-out of the bus starts at {private_price_amount_text}. Email {email} with your date and group size.", hidden: false },
     ],
     reviews: [
-      { id: "r1", quote: "An excellent way to learn more about the deep history of Memphis rap legends.", author: "Requill P.", date: "Dec 2025", url: TA, hidden: false },
-      { id: "r2", quote: "Our teens were so engaged… It was a fun way to see Memphis and learn a lot about hip hop.", author: "Amy A.", date: "Jan 2026", url: TA, hidden: false },
-      { id: "r3", quote: "You will be educated, empowered, and entertained at the same time.", author: "Karla R.", date: "Nov 2025", url: TA, hidden: false },
-      { id: "r4", quote: "If you are a fan of hip hop and rap music, this tour is for you.", author: "Tywanda W.", date: "Dec 2025", url: TA, hidden: false },
-      { id: "r5", quote: "She was great with our kids, 9 & 7 year old boys!", author: "Erin W.", date: "Dec 2025", url: TA, hidden: false },
-      { id: "r6", quote: "As a Memphian, art, and music lover this captured everything in one trip.", author: "A traveller", date: "Jul 2026", url: TA, hidden: false },
+      { id: "r1", quote: "An excellent way to learn more about the deep history of Memphis rap legends.", author: "Requill P.", date: "Dec 2025", hidden: false },
+      { id: "r2", quote: "Our teens were so engaged… It was a fun way to see Memphis and learn a lot about hip hop.", author: "Amy A.", date: "Jan 2026", hidden: false },
+      { id: "r3", quote: "You will be educated, empowered, and entertained at the same time.", author: "Karla R.", date: "Nov 2025", hidden: false },
+      { id: "r4", quote: "If you are a fan of hip hop and rap music, this tour is for you.", author: "Tywanda W.", date: "Dec 2025", hidden: false },
+      { id: "r5", quote: "She was great with our kids, 9 & 7 year old boys!", author: "Erin W.", date: "Dec 2025", hidden: false },
+      { id: "r6", quote: "As a Memphian, art, and music lover this captured everything in one trip.", author: "A traveller", date: "Jul 2026", hidden: false },
     ],
     pages: [
       {
@@ -300,7 +298,7 @@ export function seedContent(): Content {
         h1: "Memphis Rap Tour reviews",
         intro: "Memphis Rap Tour has a 5.0 rating from 20 reviews on Tripadvisor (as of 3 Nov 2026). Riders mention the history, the guides, and how engaged their teens and kids were.",
         sections: [
-          s("reviews-list", "reviews", { heading: "What do riders say?", body: "Short quotes from Tripadvisor. Tap a name to read the full review there.", limit: "0" }),
+          s("reviews-list", "reviews", { heading: "What do riders say?", body: "Short quotes from reviews on Tripadvisor.", limit: "0" }),
           s("reviews-cta", "cta", { label: "Ready to ride?", heading: "Book a seat on the bus", body: "{duration}, {schedule_long}. Tickets are {price}.", price: "", subtext: "", button_text: "Book a seat ›", button_href: "{book_url}", style: "gold" }),
         ],
       },
