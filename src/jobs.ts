@@ -8,8 +8,10 @@ export interface FullEnv extends Env {
 }
 
 
-const BACKUP_TABLES = ["schema_version", "users", "settings", "images", "subscribers", "tour_requests", "audit", "counts", "recovery_codes", "tours", "bookings", "stripe_events", "booking_discounts"];
+const BACKUP_TABLES = ["schema_version", "users", "settings", "images", "subscribers", "tour_requests", "audit", "counts", "recovery_codes", "tours", "bookings", "stripe_events", "booking_discounts", "reminder_sends"];
 export const KEEP_BACKUPS = 30;
+/** The once-a-day cron in wrangler.toml. Every other cron (the 10-minute one) runs the reminder emails. */
+export const DAILY_CRON = "0 9 * * *";
 
 export async function dailyJob(env: FullEnv, t = now()): Promise<string> {
   const day = new Date(t * 1000).toISOString().slice(0, 10);

@@ -49,13 +49,13 @@ Workers KV. Everything runs on Cloudflare's free tier ($0).
 
 ## Bookings (own booking tool)
 
-Status: **built and tested against Stripe in test mode. Book buttons still go to Acuity.**
+Status: **live since the cutover on 5 Nov 2026: every Book button goes to `/tickets` and Stripe checkout (live mode), not Acuity.**
 
 - **Tours** tab: add repeating dates (default every Fri and Sat at 2:00 pm Memphis time, 30 seats, the Tour
   info price), or one date. Open a date for the riders list, check-in list, spreadsheet, seats and price,
   and to close it.
 - **Outside sales** (Viator, Eventnoire, Airbnb, Acuity): open the date › + Add outside booking. It comes
-  off the same seat count. The site refuses to go over the seat limit unless you tick "Allow it".
+  off the same seat count. Add the rider's email (optional) and they get the reminder emails too. The site refuses to go over the seat limit unless you tick "Allow it".
 - **Cancel / refund**: open the date › the rider › Cancel and refund. Site bookings are refunded through
   Stripe (nothing changes if Stripe says no); outside bookings just free the seats (refund them on that site).
 - **Seats are never oversold**: a checkout holds seats for 15 minutes, and a hold is one database insert
@@ -81,7 +81,7 @@ Status: **built and tested against Stripe in test mode. Book buttons still go to
 5. Test with card `4242 4242 4242 4242`. Test payments are marked "TEST PAYMENT" on the riders list and
    never count toward the cutover.
 
-### Cutover from Acuity (only with Carlos's yes)
+### Cutover from Acuity (done 5 Nov 2026, with Carlos's yes)
 
 1. Live keys saved (steps 2–4 with live-mode values: vault `STRIPE_SECRET_KEY_MRT`, `STRIPE_WEBHOOK_SECRET_MRT`).
    `STRIPE_MODE = "live"` is set in `wrangler.toml` (5 Nov 2026). In live mode a test key is refused, so
@@ -91,6 +91,38 @@ Status: **built and tested against Stripe in test mode. Book buttons still go to
 3. Admin › Tours › Online booking set-up › "Switch Book buttons to this site". The switch refuses until
    1 and 2 are true. "Send Book buttons back to Acuity" undoes it at once.
 4. Keep Acuity, Viator, Eventnoire and Airbnb dates in line with the Tours tab (outside bookings).
+
+## Reminder emails (24 h and 1 h before each tour)
+
+Every booking with status `paid` and an email gets two plain-text emails (sample: https://claude.ai/artifact/Ws41nQCPzqrkuW7uCefoFM).
+Held, expired, cancelled and refunded bookings get none. Outside bookings get them when an email was added.
+Code: `src/reminders.ts` (the rule is the `decide()` function); test: `test/reminders.test.ts`.
+
+| Reminder | Goes out | Skipped when |
+|---|---|---|
+| Day before (`24h`) | from 24 h before the start until 2 h before it | the booking was made less than 27 h before the start (the confirmation just went out) |
+| Hour before (`1h`) | from 1 h before the start until the start | the booking was made in the last hour before the start |
+
+- **Checked every 10 minutes** (cron `*/10 * * * *`), so each email goes out up to 10 minutes after its window opens.
+- **Never after the start, never both at once**: the windows don't overlap (the day-before window closes 2 h
+  before the start, the hour-before one opens 1 h before).
+- **Once only**: each reminder has a row in `reminder_sends` (booking, kind), claimed in one statement before
+  sending, so two overlapping runs can't both send it. A failed send is marked `failed` and retried on the next
+  run while its window is open. A row left `sending` (the Worker stopped mid-send) is not retried: a possible
+  miss is better than a double email. The admin shows it as "started, result not recorded".
+- **Content**: tour day and time in Central time, length and meeting point from Tour info (the published
+  version), tickets, the booking's own link, and "Running late, or need to change or cancel? Reply or write to
+  team@memphisraptour.com with your booking reference" (the booking page's own wording). No refund promise (the
+  policy isn't written yet), no promise to wait for late riders, no phone number.
+- **Where to see it**: Tours › a date › each paid rider shows "day-before email sent / not sent: <reason> /
+  skipped / not yet" and the same for the hour-before email. Each run writes one line to the Worker log and to
+  setting `reminders_last_run`:
+  `reminders: 2 sent, 0 failed, 1 skipped; 14 paid riders with an email on tours in the next 24 h`.
+  ```sh
+  npx wrangler d1 execute mrt-site --remote --command "SELECT value FROM settings WHERE key='reminders_last_run'"
+  ```
+- **Until email is set up** (below), every due reminder is recorded as `failed: email not set up yet` and
+  retried each run while its window is open; nothing reaches riders.
 
 ## Email (not set up yet)
 
@@ -107,8 +139,18 @@ send_email = [{ name = "EMAIL" }]
 EMAIL_FROM = "team@memphisraptour.com"
 ```
 
-Customer booking confirmations need Email Sending (Email Routing only sends to verified addresses).
-Check its price on the free plan before turning it on.
+Customer booking confirmations and reminder emails need Email Sending (Email Routing only sends to verified
+addresses, and turning on Email Routing would take over the domain's MX records from Google Workspace).
+Email Sending to any address **needs the Workers Paid plan ($5/month, 3,000 emails a month included, then
+$0.35 per 1,000)**, per Cloudflare's Email Service pricing page (read 17 Nov 2026). On 17 Nov 2026
+`wrangler email sending list` answered "Unauthorized [code: 2036]" with the `email_sending (write)` scope
+present, which fits the account still being on Workers Free. Steps once Carlos has upgraded:
+
+```sh
+npx wrangler email sending enable memphisraptour.com   # adds the SPF/DKIM records on Cloudflare DNS
+npx wrangler email sending dns get memphisraptour.com  # check they're there
+```
+then land the `send_email` / `EMAIL_FROM` change above, and book a test as in Reminder emails.
 
 ## Secrets
 
@@ -158,7 +200,11 @@ The site refuses sign-ups and bookings (named stop `SECRET_MISSING`) if either i
 
 | Job | When | What | Where it reports |
 |---|---|---|---|
-| Daily backup + tidy | 09:00 UTC (Worker cron) | KV backup, keep 30; purge photos removed 30+ days ago; drop old rate-limit rows and dead sessions | Worker logs: one census line |
+| Daily backup + tidy | 09:00 UTC (Worker cron `0 9 * * *`) | KV backup, keep 30; purge photos removed 30+ days ago; drop old rate-limit rows and dead sessions | Worker logs: one census line |
+| Reminder emails | every 10 minutes (Worker cron `*/10 * * * *`) | 24 h and 1 h reminders to paid riders (Reminder emails above) | Worker logs and setting `reminders_last_run`: one census line (sent, failed, skipped) |
+
+`scheduled()` in `src/index.ts` routes by cron string: the daily one must equal `DAILY_CRON` in `src/jobs.ts`;
+every other cron runs the reminders. Change both together.
 | Daily site check | 13:00 UTC (GitHub Actions) | Every sitemap page answers 200; Book reaches the booking page; the site's price, length and days match the booking page | Opens or updates one GitHub issue; closes it when clear. "Could not read" is never treated as all clear |
 
 ## Domain switch (Carlos's step, later)

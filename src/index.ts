@@ -1,7 +1,8 @@
 // Memphis Rap Tour website: one Worker. Static files (CSS, fonts, photos, share images) are served by
 // Workers static assets before this code runs; everything else is here.
 import { handleAdmin } from "./admin/routes";
-import { dailyJob, type FullEnv } from "./jobs";
+import { DAILY_CRON, dailyJob, type FullEnv } from "./jobs";
+import { reminderJob } from "./reminders";
 import { type Content, loadVersion, pointers } from "./content";
 import { esc, type Env, html, now, redirect, text } from "./http";
 import { readImage } from "./images";
@@ -175,7 +176,8 @@ export default {
       return html("<!doctype html><title>Something went wrong</title><p>Something went wrong on our side. Try again in a minute.</p>", { status: 500 });
     }
   },
-  async scheduled(_c: ScheduledController, env: FullEnv, ectx: ExecutionContext): Promise<void> {
-    ectx.waitUntil(dailyJob(env));
+  async scheduled(c: ScheduledController, env: FullEnv, ectx: ExecutionContext): Promise<void> {
+    // Route by cron: the daily backup runs once a day; the 10-minute cron sends reminder emails.
+    ectx.waitUntil(c.cron === DAILY_CRON ? dailyJob(env) : reminderJob(env));
   },
 };

@@ -11,6 +11,9 @@ import {
 import { mailer } from "../email";
 import { ipHash, sha256Hex } from "../http";
 import { stripeReady } from "../stripe";
+import { reminderWords } from "../reminders";
+
+type Reminded = { r24_state: string | null; r24_detail: string | null; r1_state: string | null; r1_detail: string | null };
 import {
   BLOCK_TYPES, BLOCKS, type BlockType, type Content, defaultBlockData, findPage, findSection, loadDraft, loadVersion,
   newId, pointers, publishDraft, restoreVersion, saveDraft,
@@ -1046,11 +1049,15 @@ const tourRepeat: Handler = async (c) => {
 const tourPage: Handler = async (c, m) => {
   const t = await getTour(c.env.DB, Number(m[1]));
   if (!t) return back("/admin/tours", "That tour doesn't exist.", "err");
-  const bs = await c.env.DB.prepare("SELECT b.*, d.code AS promo_code, d.amount_cents AS promo_cents FROM bookings b LEFT JOIN booking_discounts d ON d.booking_id = b.id WHERE b.tour_id = ? ORDER BY (b.status = 'paid') DESC, b.created_at").bind(t.id).all<Booking & { promo_code: string | null; promo_cents: number | null }>();
+  const bs = await c.env.DB.prepare(`SELECT b.*, d.code AS promo_code, d.amount_cents AS promo_cents, r24.state AS r24_state, r24.detail AS r24_detail, r1.state AS r1_state, r1.detail AS r1_detail
+    FROM bookings b LEFT JOIN booking_discounts d ON d.booking_id = b.id
+    LEFT JOIN reminder_sends r24 ON r24.booking_id = b.id AND r24.kind = '24h'
+    LEFT JOIN reminder_sends r1 ON r1.booking_id = b.id AND r1.kind = '1h'
+    WHERE b.tour_id = ? ORDER BY (b.status = 'paid') DESC, b.created_at`).bind(t.id).all<Booking & Reminded & { promo_code: string | null; promo_cents: number | null }>();
   const live = bs.results.filter((b) => b.status === "paid" || (b.status === "held" && (b.hold_expires_at ?? 0) > now()));
   const other = bs.results.filter((b) => !live.includes(b));
-  const bRow = (b: Booking & { promo_code?: string | null; promo_cents?: number | null }) => `<li class="row${b.status === "paid" || b.status === "held" ? "" : " is-hidden"}" id="b-${b.id}"><div class="row-main"><b>${esc(b.name)} · ${b.seats} ticket${b.seats === 1 ? "" : "s"}</b>
-<span class="sub">${esc(SOURCE_NAMES[b.source] || b.source)} · ${statusWords[b.status] || esc(b.status)}${b.amount_cents ? " · " + money(b.amount_cents) : ""}${b.promo_code ? ` · promo ${esc(b.promo_code)} (−${money(b.promo_cents || 0)})` : ""} · ${esc(b.ref)}${b.email ? ` · <a href="mailto:${esc(b.email)}">${esc(b.email)}</a>` : ""}${b.phone ? ` · ${esc(b.phone)}` : ""}${b.email_status ? ` · email ${esc(b.email_status)}` : ""}${b.note ? ` · ${esc(b.note)}` : ""}</span></div>
+  const bRow = (b: Booking & Partial<Reminded> & { promo_code?: string | null; promo_cents?: number | null }) => `<li class="row${b.status === "paid" || b.status === "held" ? "" : " is-hidden"}" id="b-${b.id}"><div class="row-main"><b>${esc(b.name)} · ${b.seats} ticket${b.seats === 1 ? "" : "s"}</b>
+<span class="sub">${esc(SOURCE_NAMES[b.source] || b.source)} · ${statusWords[b.status] || esc(b.status)}${b.amount_cents ? " · " + money(b.amount_cents) : ""}${b.promo_code ? ` · promo ${esc(b.promo_code)} (−${money(b.promo_cents || 0)})` : ""} · ${esc(b.ref)}${b.email ? ` · <a href="mailto:${esc(b.email)}">${esc(b.email)}</a>` : ""}${b.phone ? ` · ${esc(b.phone)}` : ""}${b.email_status ? ` · email ${esc(b.email_status)}` : ""}${b.note ? ` · ${esc(b.note)}` : ""}</span>${b.status === "paid" ? `<span class="sub">${b.email ? `${esc(reminderWords("24h", b.r24_state ?? null, b.r24_detail ?? null))} · ${esc(reminderWords("1h", b.r1_state ?? null, b.r1_detail ?? null))}` : "No email, so no reminder emails"}</span>` : ""}</div>
 <div class="row-act">${b.status === "paid" ? postButton(c.auth, `/admin/bookings/${b.id}/checkin`, b.checked_in_at ? "✓ Here" : "Check in", b.checked_in_at ? "btn btn-green" : "btn") : ""}</div>
 ${b.status === "paid" || b.status === "held" ? `<details class="danger"><summary>${b.source === "site" && b.status === "paid" ? "Cancel and refund ▾" : "Cancel ▾"}</summary><div class="danger-in"><p>${b.source === "site" && b.status === "paid" ? `Refunds ${money(b.amount_cents)} to their card through Stripe and frees ${b.seats} seat${b.seats === 1 ? "" : "s"}. This can't be undone.` : `Frees ${b.seats} seat${b.seats === 1 ? "" : "s"}.${b.source !== "site" ? ` Refund them on ${esc(SOURCE_NAMES[b.source] || "that site")} yourself if needed.` : ""}`}</p>
 <div class="row-actions">${postButton(c.auth, `/admin/bookings/${b.id}/cancel`, "Yes, cancel" + (b.source === "site" && b.status === "paid" ? " and refund" : ""), "btn btn-red")}</div></div></details>` : ""}</li>`;
@@ -1065,6 +1072,7 @@ ${b.status === "paid" || b.status === "held" ? `<details class="danger"><summary
 <label class="field"><span class="flabel">Sold on</span><select name="source">${SOURCES.filter((x) => x !== "site").map((x) => `<option value="${x}">${esc(SOURCE_NAMES[x])}</option>`).join("")}</select></label>
 ${field("name", "Name", "", { required: true })}
 ${field("seats", "Tickets", "1", { type: "number", required: true })}
+${field("email", "Email (optional)", "", { type: "email", hint: "Add it and they get the reminder emails the day before and an hour before." })}
 ${field("note", "Note (optional)", "", { hint: "For example the Viator booking number." })}
 ${check("allow_over", "Allow it even if it goes over the seat limit", false)}
 <div class="row-actions"><button class="btn btn-green" type="submit">+ Add</button></div>
@@ -1093,7 +1101,9 @@ const tourOutside: Handler = async (c, m) => {
   const source = SOURCES.includes(S(c, "source") as any) && S(c, "source") !== "site" ? S(c, "source") : "other";
   const name = S(c, "name").trim().slice(0, 80);
   if (!name) return back(`/admin/tours/${id}`, "Add the rider's name.", "err");
-  const r = await takeSeats(c.env.DB, { tourId: id, seats: Number(S(c, "seats")), name, email: "", phone: "", source, status: "paid", amountCents: 0, allowOver: !!F(c).get("allow_over"), note: S(c, "note").trim().slice(0, 200) });
+  const email = S(c, "email").trim().toLowerCase().slice(0, 200);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return back(`/admin/tours/${id}`, "That email doesn't look right. Check it, or leave it empty.", "err");
+  const r = await takeSeats(c.env.DB, { tourId: id, seats: Number(S(c, "seats")), name, email, phone: "", source, status: "paid", amountCents: 0, allowOver: !!F(c).get("allow_over"), note: S(c, "note").trim().slice(0, 200) });
   if (!r.ok) return back(`/admin/tours/${id}`, `${r.reason} Tick "Allow it" to add it anyway.`, "err");
   await audit(c.env.DB, c.auth.user.id, "Added an outside booking", `${SOURCE_NAMES[source]}: ${name}, ${r.booking.seats} seats`);
   return back(`/admin/tours/${id}`, `Added ${name} (${SOURCE_NAMES[source]}). Seats left went down by ${r.booking.seats}.`, "ok", `b-${r.booking.id}`);

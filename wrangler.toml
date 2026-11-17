@@ -25,15 +25,17 @@ id = "c638d46cad524cefbcc2553ec69f6dd1"
 binding = "BACKUPS"
 id = "18838207c81e4be38bb6e4b052b047a1"
 
-# Daily backup + tidy-up. Time of day does not matter for a backup, so a fixed UTC hour is fine (09:00 UTC).
+# "0 9 * * *": daily backup + tidy-up (time of day does not matter for a backup, so a fixed UTC hour is fine).
+# "*/10 * * * *": reminder emails 24 h and 1 h before each tour (src/reminders.ts). scheduled() routes by this
+# string: the daily one must match DAILY_CRON in src/jobs.ts; any other cron runs the reminders.
 [triggers]
-crons = ["0 9 * * *"]
+crons = ["0 9 * * *", "*/10 * * * *"]
 
 [vars]
 # The one host search engines should index. Every other host (workers.dev) answers noindex.
 CANONICAL_HOST = "www.memphisraptour.com"
 # Stripe: "live" accepts only a live key (sk_live_), "test" only a test key. Owner ruling 5 Nov 2026: live,
-# for a $5 test booking first. Book buttons still go to Acuity until the admin switch is flipped.
+# for a $5 test booking first. Cutover done 5 Nov 2026: Book buttons go to this site.
 STRIPE_MODE = "live"
 
 # Secrets (set with `wrangler secret put`, values from the vault, never in this file):
