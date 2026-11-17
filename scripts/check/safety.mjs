@@ -14,7 +14,9 @@ const SECRET_PATTERNS = [
   ["AWS key", /\bAKIA[0-9A-Z]{16}\b/],
   ["OpenAI/OpenRouter key", /\bsk-(or-)?[A-Za-z0-9-]{20,}\b/],
   ["Slack token", /\bxox[abp]-[A-Za-z0-9-]{10,}\b/],
-  ["secret value in config", /^\s*(UNSUB_SECRET|IP_SALT|MRT_ADMIN_TEMP_PASSWORD_CARLOS)\s*=\s*["'][^"']+["']/m],
+  ["Google OAuth client secret", /\bGOCSPX-[A-Za-z0-9_-]{20,}/],
+  ["Google refresh token", /\b1\/\/0[A-Za-z0-9_-]{30,}/],
+  ["secret value in config", /^\s*(UNSUB_SECRET|IP_SALT|MRT_ADMIN_TEMP_PASSWORD_CARLOS|GOOGLE_CLIENT_SECRET|GOOGLE_REFRESH_TOKEN)\s*=\s*["'][^"']+["']/m],
 ];
 const PHONE = /(\+?1[\s.-]?)?\(?\b[2-9]\d{2}\)?[\s.-]\d{3}[\s.-]\d{4}\b/;
 const BINARY = /\.(png|jpe?g|webp|woff2?|ico|gif)$/i;
@@ -46,6 +48,7 @@ if (process.argv.includes("--self-test")) {
     ["a phone number in the site", [{ ...src, text: src.text + "\nconst p = '" + ["901", "555", "0100"].join("-") + "';" }]],
     ["a GitHub token", [{ path: "x.js", text: "const t='ghp_" + "a".repeat(36) + "'" }]],
     ["a secret in wrangler.toml", [{ path: "wrangler.toml", text: 'UNSUB_SECRET = "abc123"' }]],
+    ["a Google refresh token", [{ path: "src/email.ts", text: "const r='1/" + "/0" + "a".repeat(40) + "'" }]],
     ["a committed .dev.vars", [{ path: ".dev.vars", text: "X=1" }]],
   ];
   const missed = BROKEN.filter(([, f]) => check(f).length === 0).map(([n]) => n);

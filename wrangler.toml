@@ -41,3 +41,5 @@ STRIPE_MODE = "live"
 # Secrets (set with `wrangler secret put`, values from the vault, never in this file):
 #   UNSUB_SECRET  signs unsubscribe links
 #   IP_SALT       salts the hashed IPs used for rate limits
+#   GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN  send email as team@memphisraptour.com through
+#                 Gmail (set by scripts/google-auth.mjs; without them nothing is emailed)

@@ -11,7 +11,11 @@ export interface Env {
   STRIPE_MODE?: string;
   STRIPE_SECRET_KEY?: string;
   STRIPE_WEBHOOK_SECRET?: string;
-  /** Cloudflare Email Routing "send_email" binding; absent until memphisraptour.com is on Cloudflare. */
+  /** Gmail API sender (owner ruling 17 Nov 2026): Worker secrets, saved by scripts/google-auth.mjs. */
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GOOGLE_REFRESH_TOKEN?: string;
+  /** Cloudflare "send_email" binding (not used: Email Sending needs Workers Paid). Fallback only. */
   EMAIL?: SendEmail;
   EMAIL_FROM?: string;
 }

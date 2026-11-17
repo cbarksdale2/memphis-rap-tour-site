@@ -19,7 +19,7 @@ Workers KV. Everything runs on Cloudflare's free tier ($0).
 - **First sign-in**: the temporary password is in the vault as `MRT_ADMIN_TEMP_PASSWORD_CARLOS`. The site asks
   for a new password at once, then shows **10 recovery codes once**. Save them in a password manager.
 - **Change the password**: More › Your account › Password.
-- **Forgot it**: the sign-in page has "Email a reset link" (works once you set up email, below) and "Use a
+- **Forgot it**: the sign-in page has "Email a reset link" (works once email is set up, see Email) and "Use a
   recovery code" (works now). Each code works once; make new ones on Your account.
 - **Locked out after wrong tries**: 5 wrong tries from one connection wait 15 minutes on that connection
   only; 20 from one connection across any email wait 15 minutes. Nothing is ever locked for good, and
@@ -123,34 +123,30 @@ Code: `src/reminders.ts` (the rule is the `decide()` function); test: `test/remi
   ```
 - **Until email is set up** (below), every due reminder is recorded as `failed: email not set up yet` and
   retried each run while its window is open; nothing reaches riders.
+- **Test without real riders**: add a closed tour date about 70 minutes out with one paid booking to
+  team@memphisraptour.com (and one 23 h out, booked earlier, for the day-before email), wait for the next run,
+  check team@'s inbox and `reminder_sends`, then delete the rows and note it in the audit table.
 
-## Email (not set up yet)
+## Email (Gmail as team@memphisraptour.com)
 
-Nothing is emailed until the domain is on Cloudflare. Until then, private tour requests, bookings and
-reset links all still work in the admin, and each row says "not sent: email not set up yet".
+Owner ruling 17 Nov 2026: the site sends as team@memphisraptour.com through Google Workspace (Gmail API, free),
+not Cloudflare Email Sending (that needs Workers Paid, $5/month). Booking confirmations, tour reminders,
+private tour request alerts and password reset links all go this way (`src/email.ts`).
 
-To turn it on (after the domain switch below): Cloudflare dashboard › memphisraptour.com › Email ›
-Email Sending (or Email Routing with team@memphisraptour.com verified as a destination), then add to
-`wrangler.toml` through a PR:
-
-```toml
-send_email = [{ name = "EMAIL" }]
-[vars]
-EMAIL_FROM = "team@memphisraptour.com"
-```
-
-Customer booking confirmations and reminder emails need Email Sending (Email Routing only sends to verified
-addresses, and turning on Email Routing would take over the domain's MX records from Google Workspace).
-Email Sending to any address **needs the Workers Paid plan ($5/month, 3,000 emails a month included, then
-$0.35 per 1,000)**, per Cloudflare's Email Service pricing page (read 17 Nov 2026). On 17 Nov 2026
-`wrangler email sending list` answered "Unauthorized [code: 2036]" with the `email_sending (write)` scope
-present, which fits the account still being on Workers Free. Steps once Carlos has upgraded:
-
-```sh
-npx wrangler email sending enable memphisraptour.com   # adds the SPF/DKIM records on Cloudflare DNS
-npx wrangler email sending dns get memphisraptour.com  # check they're there
-```
-then land the `send_email` / `EMAIL_FROM` change above, and book a test as in Reminder emails.
+- **Scope**: `gmail.send` only (the site can send, never read the mailbox). Sent emails show in team@'s Sent folder.
+- **Secrets** (Worker, and the vault as `MRT_GMAIL_*`): `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+  `GOOGLE_REFRESH_TOKEN`. Without all three, nothing is emailed and each row says "not sent: email not set up yet".
+- **Set up once (Carlos, about 5 minutes)**:
+  1. Google Cloud console signed in as team@memphisraptour.com: a project owned by the memphisraptour.com
+     organization, Gmail API enabled, OAuth consent screen **Internal** (no Google review), and an OAuth client
+     of type **Desktop app**.
+  2. On the Mac, from this repo: `node scripts/google-auth.mjs`. Paste the client ID and secret, sign in as
+     team@ in the browser, allow sending. The script sends one test email to team@, saves the three values to
+     the vault and puts them on the Worker. Nothing else to deploy.
+- **If Google refuses the sign-in later** (password change, access removed): rows say "Google refused the saved
+  sign-in (invalid_grant)". Run step 2 again (`vault run -- node scripts/google-auth.mjs` reuses the saved client).
+- **Turn it off**: `npx wrangler secret delete GOOGLE_REFRESH_TOKEN`, and remove the app at
+  myaccount.google.com › Security › Third-party connections, signed in as team@.
 
 ## Secrets
 
