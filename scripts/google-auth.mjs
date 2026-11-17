@@ -1,8 +1,8 @@
 // Connect the site's email to team@memphisraptour.com (Google Workspace, Gmail API, scope gmail.send only).
 // Run once, from the repo root, on the Mac:
 //   node scripts/google-auth.mjs
-// It asks for the OAuth client ID and secret (Google Cloud › APIs & Services › Credentials › the "Desktop app"
-// client) unless the vault already has them as MRT_GMAIL_CLIENT_ID / MRT_GMAIL_CLIENT_SECRET (then run it as
+// It asks for the OAuth client ID, then reads the secret from the clipboard after you click its copy icon
+// (Google Cloud › Google Auth Platform › Clients › the "Desktop app" client), unless the vault already has them as MRT_GMAIL_CLIENT_ID / MRT_GMAIL_CLIENT_SECRET (then run it as
 // `vault run -- node scripts/google-auth.mjs`). It opens Google's consent page in the browser: sign in as
 // team@memphisraptour.com and allow "Send email on your behalf". Then it:
 //   1. sends one test email from team@ to team@ ("Site email is connected"), proving the sign-in can send;
@@ -30,10 +30,23 @@ const b64url = (b) => b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_
 
 let clientId = process.env.MRT_GMAIL_CLIENT_ID || "";
 let clientSecret = process.env.MRT_GMAIL_CLIENT_SECRET || "";
+// Pasted text can carry invisible characters (bracketed-paste markers, spaces, line breaks); keep only what an
+// OAuth value can contain.
+const clean = (s) => String(s).replace(/\x1b\[20[01]~/g, "").replace(/[^A-Za-z0-9._\-]/g, "");
+const clipboard = () => { try { return execFileSync("pbpaste", { encoding: "utf8" }); } catch { return ""; } };
+
 if (!clientId) clientId = await ask("OAuth client ID (ends in .apps.googleusercontent.com): ");
-if (!clientSecret) clientSecret = await ask("OAuth client secret (hidden): ", true);
-if (!/\.apps\.googleusercontent\.com$/.test(clientId)) stop("BAD_CLIENT_ID", 3, "that client ID doesn't end in .apps.googleusercontent.com; copy it from Google Cloud › Credentials.");
-if (clientSecret.length < 10) stop("BAD_CLIENT_SECRET", 3, "no client secret given; copy it from the same Credentials page.");
+clientId = clean(clientId);
+if (!/^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(clientId)) stop("BAD_CLIENT_ID", 3, "that doesn't look like a client ID (digits-letters.apps.googleusercontent.com); copy it from Google Cloud › Clients.");
+if (!clientSecret) {
+  // The secret is read from the clipboard, never typed or shown: click the copy icon next to the secret in
+  // Google Cloud, then press Return here.
+  await ask("Click the copy icon next to the client secret in Google Cloud, then press Return here: ");
+  clientSecret = clipboard();
+}
+clientSecret = clean(clientSecret);
+if (clientSecret === clientId) stop("BAD_CLIENT_SECRET", 3, "the clipboard holds the client ID, not the secret. Copy the secret (the icon on its row under Client secrets) and run again.");
+if (!/^GOCSPX-[A-Za-z0-9_\-]{20,}$/.test(clientSecret)) stop("BAD_CLIENT_SECRET", 3, `the clipboard doesn't hold a client secret (it should start with GOCSPX-; got ${clientSecret.length} characters starting "${clientSecret.slice(0, 3)}"). Copy the secret and run again.`);
 
 // Local consent flow: Google sends the browser back to this Mac (loopback), with PKCE.
 const verifier = b64url(randomBytes(32));
