@@ -1,5 +1,6 @@
-// Discount codes. Stripe is the source of truth: a code is a Stripe coupon plus its promotion code, so
-// checkout (allow_promotion_codes) keeps working unchanged. The site only makes, lists and switches them.
+// Discount codes. Stripe is the source of truth for the code itself (a coupon plus its promotion code); the
+// site keeps only which tour dates a code works on (D1 code_dates, no rows = every date). Riders type the code
+// on the site's ticket form; the site checks it (decideCode) and opens Stripe Checkout with it applied.
 import { memphisTime, money, tourWhen } from "./booking";
 import type { Env } from "./http";
 import { stripeApi } from "./stripe";
@@ -134,4 +135,73 @@ export function offWords(p: PromoCode): string {
   if (p.coupon?.percent_off) return `${p.coupon.percent_off}% off each order`;
   if (p.coupon?.amount_off) return `${money(p.coupon.amount_off)} off each order`;
   return "discount set in Stripe";
+}
+
+// ---------------- which tour dates a code works on ----------------
+
+export interface DateOnly { id: number; starts_at: number }
+
+export async function codeDates(db: D1Database): Promise<Map<string, DateOnly[]>> {
+  const r = await db.prepare("SELECT d.promotion_code_id AS pid, t.id, t.starts_at FROM code_dates d JOIN tours t ON t.id = d.tour_id ORDER BY t.starts_at").all<{ pid: string; id: number; starts_at: number }>();
+  const m = new Map<string, DateOnly[]>();
+  for (const x of r.results) (m.get(x.pid) || m.set(x.pid, []).get(x.pid)!).push({ id: x.id, starts_at: x.starts_at });
+  return m;
+}
+
+export async function datesFor(db: D1Database, promoId: string): Promise<DateOnly[]> {
+  const r = await db.prepare("SELECT t.id, t.starts_at FROM code_dates d JOIN tours t ON t.id = d.tour_id WHERE d.promotion_code_id = ? ORDER BY t.starts_at").bind(promoId).all<DateOnly>();
+  return r.results;
+}
+
+/** Replaces a code's date rule. An empty list = every date. */
+export async function setDates(db: D1Database, promoId: string, tourIds: number[], at: number): Promise<void> {
+  await db.batch([
+    db.prepare("DELETE FROM code_dates WHERE promotion_code_id = ?").bind(promoId),
+    ...tourIds.map((id) => db.prepare("INSERT OR IGNORE INTO code_dates (promotion_code_id, tour_id, created_at) VALUES (?, ?, ?)").bind(promoId, id, at)),
+  ]);
+}
+
+const dayWords = (sec: number) => tourWhen(sec).split(",")[0];
+
+/** "Sat 21 Nov and Sat 28 Nov"; only dates still to come; long lists are shortened. */
+export function datesWords(dates: DateOnly[], nowSec: number, max = 6): string {
+  const days = [...new Set(dates.filter((d) => d.starts_at > nowSec).map((d) => dayWords(d.starts_at)))];
+  if (!days.length) return "";
+  if (days.length > max) return `${days.slice(0, max).join(", ")} and ${days.length - max} more date${days.length - max === 1 ? "" : "s"}`;
+  return days.length === 1 ? days[0] : `${days.slice(0, -1).join(", ")} and ${days[days.length - 1]}`;
+}
+
+export function ruleWords(dates: DateOnly[], nowSec: number): string {
+  if (!dates.length) return "Every date";
+  const w = datesWords(dates, nowSec);
+  return w ? `Only ${w}` : "Only dates that have passed (works on no date now)";
+}
+
+export type CodeDecision = { ok: true; promoId: string; code: string } | { ok: false; message: string };
+
+/**
+ * May this code be used on this tour date? Pure: the promotion code comes from Stripe, the date rule from D1.
+ * The date rule is checked before the code's state so a rider on the wrong date learns which dates it fits.
+ */
+export function decideCode(promo: PromoCode | null, tourId: number, rule: DateOnly[], nowSec: number): CodeDecision {
+  if (!promo) return { ok: false, message: "We don't know that code. Check the spelling, or clear the code box to pay full price." };
+  if (rule.length && !rule.some((d) => d.id === tourId)) {
+    const w = datesWords(rule, nowSec);
+    return { ok: false, message: w ? `This code works only on ${w}. Pick one of those dates, or clear the code box to pay full price.` : "This code doesn't work on any date that's still open. Clear the code box to pay full price." };
+  }
+  if (promo.expires_at && promo.expires_at <= nowSec) return { ok: false, message: "That code has ended. Clear the code box to pay full price." };
+  if (promo.max_redemptions && promo.times_redeemed >= promo.max_redemptions) return { ok: false, message: "That code has been used up. Clear the code box to pay full price." };
+  if (!promo.active || promo.coupon?.valid === false) return { ok: false, message: "That code isn't working right now. Clear the code box to pay full price." };
+  return { ok: true, promoId: promo.id, code: promo.code };
+}
+
+/** Looks the typed code up in Stripe (an active one first) and decides with the date rule. */
+export async function checkCode(env: Env, typed: string, tourId: number, nowSec: number): Promise<CodeDecision> {
+  const code = typed.replace(/\s+/g, "").toUpperCase();
+  if (!CODE_RE.test(code)) return decideCode(null, tourId, [], nowSec);
+  const r = await stripeApi.call(env, "GET", `/promotion_codes?code=${encodeURIComponent(code)}&limit=10`);
+  if (r.status !== 200) return { ok: false, message: "We couldn't check codes just now. Try again in a minute, or clear the code box to pay full price." };
+  const found: PromoCode[] = (r.body?.data || []).filter((p: PromoCode) => String(p.code).toUpperCase() === code);
+  const promo = found.find((p) => p.active) || found[0] || null;
+  return decideCode(promo, tourId, promo ? await datesFor(env.DB, promo.id) : [], nowSec);
 }

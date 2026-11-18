@@ -64,8 +64,8 @@ export function frame(f: Frame, body: string): Response {
 <title>${esc(f.title)} · Memphis Rap Tour admin</title>
 <meta name="robots" content="noindex, nofollow">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="/assets/admin.css?v=5">
-<script src="/assets/admin.js?v=4" defer></script>
+<link rel="stylesheet" href="/assets/admin.css?v=6">
+<script src="/assets/admin.js?v=6" defer></script>
 </head><body class="admin${a ? " signed-in" : ""}">
 ${banner}
 <main class="wrap">

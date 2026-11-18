@@ -70,3 +70,16 @@
     });
   });
 })();
+
+// Discount code dates: ticking a date picks "Only these dates"; choosing "Every date" clears the ticks.
+document.addEventListener("change", function (e) {
+  var el = e.target, form = el && el.form;
+  if (!form) return;
+  if (el.name === "tours" && el.checked) {
+    var only = form.querySelector('input[name="dates"][value="only"]');
+    if (only) only.checked = true;
+  }
+  if (el.name === "dates" && el.value === "all" && el.checked) {
+    form.querySelectorAll('input[name="tours"]').forEach(function (b) { b.checked = false; });
+  }
+});

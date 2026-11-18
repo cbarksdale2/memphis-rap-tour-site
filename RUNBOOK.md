@@ -86,7 +86,7 @@ Status: **live since the cutover on 5 Nov 2026: every Book button goes to `/tick
 1. Live keys saved (steps 2–4 with live-mode values: vault `STRIPE_SECRET_KEY_MRT`, `STRIPE_WEBHOOK_SECRET_MRT`).
    `STRIPE_MODE = "live"` is set in `wrangler.toml` (5 Nov 2026). In live mode a test key is refused, so
    online checkout stays off until the live key is on the Worker.
-   Promotion codes work at checkout (kept in Stripe, made from Admin › More › Discount codes); the riders list shows the code used and the amount off.
+   Discount codes are typed on the site's ticket form (kept in Stripe, made from Admin › More › Discount codes); the riders list shows the code used and the amount off.
 2. Carlos makes one real booking on `/tickets` and refunds it from the admin.
 3. Admin › Tours › Online booking set-up › "Switch Book buttons to this site". The switch refuses until
    1 and 2 are true. "Send Book buttons back to Acuity" undoes it at once.
@@ -94,27 +94,38 @@ Status: **live since the cutover on 5 Nov 2026: every Book button goes to `/tick
 
 ## Discount codes
 
-Owner ruling 18 Nov 2026: Carlos makes discount codes himself from the admin, as many as he wants.
+Owner rulings 18 Nov 2026: Carlos makes discount codes himself from the admin, as many as he wants, and can limit a
+code to chosen tour dates. Riders type codes on the site's ticket form, not on Stripe's page.
 
 - **Where**: Admin › ☰ More › Discount codes. One list: codes that are on, then "Off (N)" folded. Each row shows
-  what it takes off, uses so far (of the limit), how many bookings used it (from the site's own bookings), and its last day.
-- **Codes live in Stripe**, not in the site's database. Making a code creates a Stripe coupon (`duration=once`) and its
-  promotion code; the list is read from Stripe each time the page opens. Checkout is unchanged
-  (`allow_promotion_codes`), and the webhook still records the code used on each booking (`booking_discounts`).
-  A code made by hand in the Stripe dashboard shows up here too.
+  what it takes off, uses so far (of the limit), how many bookings used it (from the site's own bookings), its last day,
+  and "Every date" or the dates it works on.
+- **Codes live in Stripe**; only the date rule lives in D1 (`code_dates`: promotion code id + tour id; no rows = every
+  date). Making a code creates a Stripe coupon (`duration=once`) and its promotion code; the list is read from Stripe
+  each time the page opens. A code made by hand in the Stripe dashboard shows up here too, as "Every date".
+- **How a rider uses a code**: the ticket form (`/tickets/<date>`) has an optional "Discount code" box. On "Go to
+  payment" the server looks the code up in Stripe and checks, in this order: it exists; the date rule (wrong date →
+  "This code works only on <dates>."); not past its last day; uses left; on. A bad code holds no seats and the form
+  comes back filled in with a plain message. A good code opens Stripe Checkout with `discounts[0][promotion_code]`,
+  so the new total shows there. **Stripe's own code box is always off** (no `allow_promotion_codes`), because a code
+  typed there would skip the date check. The webhook still records the code used on each booking (`booking_discounts`).
+  Bad-code tries count toward the 10 checkout tries per hour per connection.
 - **Make one**: + Make a new code › the code (letters and numbers, 3 to 20, saved in capitals, must not exist
   already, even turned off) › $ off (taken off the whole order once, at most the ticket price) or % off (1 to 100)
-  › optional most uses › optional last day (works until 11:59 pm Central that day) › + Make this code. It works at once.
+  › optional most uses › optional last day (works until 11:59 pm Central that day) › which tour dates (Every date,
+  the default, or Only these dates with a tick per tour date in the next 6 months) › + Make this code. It works at once.
+- **Change a code's dates later**: its row › Change dates ▾ › Every date or tick the dates › Save dates ✓.
 - **Turn off / Turn back on**: the Stripe promotion code's active flag. Codes are never deleted. A code whose last day
   has passed or whose uses are all taken shows "Ended" (make a new one instead).
 - **"First-time riders only" is not offered**: Stripe checks it against saved Stripe customers, and checkout here
   doesn't save customers (riders pay as guests).
-- **Audit**: every make, refusal, turn-off and turn-on is in History › Who did what.
+- **Audit**: every make, refusal, turn-off, turn-on and date change is in History › Who did what.
 - **Stripe key**: the Worker's `STRIPE_SECRET_KEY` is a restricted live key; it needs Coupons: Write and
   Promotion codes: Write (checked 18 Nov 2026: it has both). If those are ever removed, the page says
   "Can't make or switch codes yet: the Stripe key needs permission". Fix: Stripe dashboard › Developers › API keys ›
   the restricted key › Edit › Coupons: Write, Promotion codes: Write › Save.
-- **Code**: `src/discounts.ts` (the rule is `planCode()`), screen in `src/admin/routes.ts` (`/admin/codes`);
+- **Code**: `src/discounts.ts` (rules: `planCode()` for making, `decideCode()` for using), `checkoutParams()` in
+  `src/booking.ts`, the form in `src/tickets.ts`, screen in `src/admin/routes.ts` (`/admin/codes`);
   test `test/discounts.test.ts`.
 
 ## Reminder emails (24 h and 1 h before each tour)
