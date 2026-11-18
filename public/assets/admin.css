@@ -101,3 +101,4 @@ details > summary::-webkit-details-marker{display:none}
 .chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;vertical-align:2px}
 .chip-on{background:var(--okbg);color:var(--ok)}
 .chip-off{background:var(--chip);color:var(--mut)}
+.date-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:0 8px}

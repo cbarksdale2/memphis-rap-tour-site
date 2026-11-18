@@ -180,11 +180,12 @@ describe("browser security policy", () => {
 });
 
 describe("promotion codes", () => {
-  it("checkout accepts codes, and the code used shows on the riders list and spreadsheet", async () => {
+  it("the code used shows on the riders list and spreadsheet; Stripe's own code box stays off", async () => {
     const id = await tour(5);
     const res = await checkout(id, 1, "promo@example.org");
     const created = calls.find((c) => c.path === "/checkout/sessions")!.params;
-    expect(created.allow_promotion_codes).toBe("true");
+    expect(created).not.toHaveProperty("allow_promotion_codes"); // codes are typed on the site's form (date rules)
+    expect(created["discounts[0][promotion_code]"]).toBeUndefined(); // no code typed, no discount
     expect(created["adaptive_pricing[enabled]"]).toBe("false"); // US dollars, never a converted local currency
     expect(created["line_items[0][price_data][currency]"]).toBe("usd");
     const sid = new URL(res.headers.get("Location")!).pathname.split("/").pop()!;

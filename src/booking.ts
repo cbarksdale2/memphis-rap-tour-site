@@ -126,9 +126,10 @@ export async function bookingByRef(env: Env, ref: string, token: string): Promis
 
 // ---------- Stripe ----------
 
-export async function startCheckout(env: Env, origin: string, b: Booking, tour: Tour): Promise<{ ok: true; url: string } | { ok: false; reason: string }> {
-  const q = `ref=${b.ref}&k=${encodeURIComponent(await manageToken(env, b.ref))}`;
-  const r = await stripeApi.call(env, "POST", "/checkout/sessions", {
+/** The Checkout session request. A code checked by the site goes in as discounts[0]; Stripe's own code box is
+ * always off, because a code typed there would skip the site's date check. */
+export function checkoutParams(origin: string, q: string, b: Booking, tour: Tour, promoId?: string): Record<string, string | number | undefined> {
+  return {
     mode: "payment",
     success_url: `${origin}/tickets/done?${q}`,
     cancel_url: `${origin}/tickets/cancelled?${q}`,
@@ -142,13 +143,18 @@ export async function startCheckout(env: Env, origin: string, b: Booking, tour: 
     "line_items[0][price_data][currency]": "usd",
     "line_items[0][price_data][unit_amount]": tour.price_cents,
     "line_items[0][price_data][product_data][name]": `Memphis Rap Tour: ${tourWhen(tour.starts_at, { year: true })} Central`,
-    allow_promotion_codes: "true", // codes are created in Stripe; the one used is recorded from the webhook
+    "discounts[0][promotion_code]": promoId || undefined, // the one used is recorded from the webhook
     "adaptive_pricing[enabled]": "false", // always charge and show US dollars, whatever country the browser is in
     expires_at: now() + 30 * 60, // Stripe's shortest; a late payment after our 15-minute hold is re-checked in the webhook
-  }, `checkout-${b.ref}`);
+  };
+}
+
+export async function startCheckout(env: Env, origin: string, b: Booking, tour: Tour, promoId?: string): Promise<{ ok: true; url: string } | { ok: false; reason: string }> {
+  const q = `ref=${b.ref}&k=${encodeURIComponent(await manageToken(env, b.ref))}`;
+  const r = await stripeApi.call(env, "POST", "/checkout/sessions", checkoutParams(origin, q, b, tour, promoId), `checkout-${b.ref}`);
   if (r.status !== 200 || !r.body?.url) {
     await env.DB.prepare("UPDATE bookings SET status = 'expired', note = ? WHERE id = ? AND status = 'held'").bind(`checkout not started: ${r.body?.error?.message || r.status}`.slice(0, 200), b.id).run();
-    return { ok: false, reason: "Online payment isn't available right now. Please try again shortly." };
+    return { ok: false, reason: promoId ? "Stripe wouldn't apply that code to this booking. Clear the code box to pay full price, or try again." : "Online payment isn't available right now. Please try again shortly." };
   }
   await env.DB.prepare("UPDATE bookings SET stripe_session_id = ? WHERE id = ?").bind(r.body.id, b.id).run();
   return { ok: true, url: r.body.url };

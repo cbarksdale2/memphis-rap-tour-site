@@ -6,12 +6,12 @@ import {
 } from "../auth";
 import {
   bookingMode, cancelBooking, DEFAULT_CAPACITY, getTour, listTours, memphisDay, memphisTime, money, setSetting, SOURCE_NAMES,
-  SOURCES, takeSeats, type Booking, tourWhen,
+  SOURCES, takeSeats, type Booking, type Tour, tourWhen,
 } from "../booking";
 import { mailer } from "../email";
 import { ipHash, sha256Hex } from "../http";
-import { stripeReady } from "../stripe";
-import { createCode, ended, lastDayWords, listCodes, NEEDS_PERMISSION, offWords, planCode, type PromoCode, setCodeActive } from "../discounts";
+import { stripeApi, stripeReady } from "../stripe";
+import { codeDates, createCode, datesFor, type DateOnly, ended, lastDayWords, listCodes, NEEDS_PERMISSION, offWords, planCode, type PromoCode, ruleWords, setCodeActive, setDates } from "../discounts";
 import { reminderWords } from "../reminders";
 
 type Reminded = { r24_state: string | null; r24_detail: string | null; r1_state: string | null; r1_detail: string | null };
@@ -1199,6 +1199,29 @@ async function maxTicketCents(c: Ctx): Promise<number> {
   return Math.max(info, ...upcoming.map((t) => t.price_cents));
 }
 
+const codeTours = (c: Ctx) => listTours(c.env.DB, now(), now() + 180 * 86400, { includeClosed: true });
+
+/** "Every date" (default) or "Only these dates" with a tick box per upcoming tour date. */
+function datePicker(tours: Tour[], chosen: DateOnly[], key: string): string {
+  const only = chosen.length > 0;
+  const ids = new Set(chosen.map((d) => d.id));
+  return `<fieldset class="field"><legend class="flabel">Which tour dates</legend>
+<label class="checkline"><input type="radio" name="dates" value="all"${only ? "" : " checked"}><span>Every date <span class="sub">(Default)</span></span></label>
+<label class="checkline"><input type="radio" name="dates" value="only"${only ? " checked" : ""}><span>Only these dates</span></label>
+${tours.length ? `<div class="date-grid">${tours.map((t) => `<label class="checkline"><input type="checkbox" name="tours" value="${t.id}"${ids.has(t.id) ? " checked" : ""} id="d-${key}-${t.id}"><span>${esc(tourWhen(t.starts_at))}${t.status === "closed" ? " · closed" : ""}</span></label>`).join("")}</div>
+<span class="hint">Times are Central. Shows the next 6 months of tour dates. Ticking a date picks "Only these dates".</span>` : `<span class="hint">No upcoming tour dates to pick from yet.</span>`}
+</fieldset>`;
+}
+
+/** Reads the picker. Only upcoming tour dates are accepted. */
+function datesFromForm(c: Ctx, tours: Tour[]): { ok: true; ids: number[] } | { ok: false; error: string } {
+  const allowed = new Set(tours.map((t) => t.id));
+  const ids = [...new Set(F(c).getAll("tours").map(Number))].filter((id) => allowed.has(id));
+  if (S(c, "dates") !== "only") return { ok: true, ids: [] };
+  if (!ids.length) return { ok: false, error: "Tick at least one date, or choose Every date." };
+  return { ok: true, ids };
+}
+
 const codes: Handler = async (c) => {
   const ready = stripeReady(c.env);
   const list = ready.ok ? await listCodes(c.env) : { ok: false as const, error: ready.reason, permission: false };
@@ -1207,6 +1230,8 @@ const codes: Handler = async (c) => {
   const t = now();
   const max = await maxTicketCents(c);
   const canEdit = list.ok;
+  const rules = await codeDates(c.env.DB);
+  const upcoming = await codeTours(c);
   const bookingsWords = (code: string) => {
     const u = byCode.get(code.toUpperCase());
     if (!u) return "no bookings yet";
@@ -1219,7 +1244,8 @@ const codes: Handler = async (c) => {
     const chip = p.active && !end ? '<span class="chip chip-on">On</span>' : '<span class="chip chip-off">Off</span>';
     const act = !canEdit ? "" : end ? '<span class="sub">Ended</span>'
       : postButton(c.auth, `/admin/codes/${p.id}/${p.active ? "off" : "on"}`, p.active ? "Turn off" : "Turn back on", "btn btn-quiet");
-    return `<li class="row" id="code-${esc(p.id)}"><div class="row-main"><span><span class="code-text">${esc(p.code)}</span> ${chip}</span><span><b>${esc(offWords(p))}</b></span><span class="sub">${esc(uses)} · ${esc(bookingsWords(p.code))} · ${esc(end || until)}</span></div><div class="row-act">${act}</div></li>`;
+    return `<li class="row" id="code-${esc(p.id)}"><div class="row-main"><span><span class="code-text">${esc(p.code)}</span> ${chip}</span><span><b>${esc(offWords(p))}</b></span><span class="sub">${esc(uses)} · ${esc(bookingsWords(p.code))} · ${esc(end || until)}</span><span class="sub"><b>${esc(ruleWords(rules.get(p.id) || [], t))}</b></span>
+${canEdit && !end ? `<details class="edit"><summary>Change dates ▾</summary><form method="post" action="/admin/codes/${esc(p.id)}/dates" class="stack">${csrf(c.auth)}${datePicker(upcoming, rules.get(p.id) || [], p.id)}<div class="row-actions"><button class="btn btn-green" type="submit">Save dates ✓</button></div></form></details>` : ""}</div><div class="row-act">${act}</div></li>`;
   };
   const all = list.ok ? list.codes : [];
   const on = all.filter((p) => p.active && !ended(p, t));
@@ -1229,7 +1255,7 @@ const codes: Handler = async (c) => {
   return page(c, { title: "Discount codes", tab: "more", back: { href: "/admin/more", label: "More" }, flash: flashFrom(c.url) }, `
 <p class="line1">${esc(line1)}</p>
 <h1>Discount codes</h1>
-<p class="sub">Riders type a code on the Stripe payment page. Codes are kept in Stripe; this page makes them and turns them off or on.</p>
+<p class="sub">Riders type a code on the ticket form, before the payment page. Codes are kept in Stripe; this page makes them, turns them off or on, and picks the dates each one works on.</p>
 ${!list.ok ? `<p class="flash flash-gap" role="status">${esc(list.permission ? NEEDS_PERMISSION : `Can't show or make codes right now: ${list.error}.`)}</p>` : ""}
 ${canEdit ? `<details class="card" id="make"><summary>+ Make a new code ▾</summary>
 <form method="post" action="/admin/codes" class="stack">${csrf(c.auth)}<input type="hidden" name="nonce" value="${nonce}">
@@ -1240,6 +1266,7 @@ ${field("code", "Code", "", { required: true, maxlength: 20, autocomplete: "off"
 ${field("value", "How much", "", { required: true, hint: `$ off: up to ${money(max)} (the ticket price), taken off the whole order once. % off: 1 to 100.` })}
 ${field("max_uses", "Most uses (optional)", "", { type: "number", hint: "Blank = no limit. Each paid checkout is one use." })}
 ${field("last_day", "Last day it works (optional)", "", { type: "date", hint: "Works until 11:59 pm Central that day. Blank = no last day." })}
+${datePicker(upcoming, [], "new")}
 <p class="sub">Riders can use it as soon as you make it. You can turn it off any time.</p>
 <div class="row-actions"><button class="btn btn-green" type="submit">+ Make this code</button></div>
 </form></details>` : ""}
@@ -1252,14 +1279,34 @@ ${off.length ? `<details class="card"><summary>Off (${off.length}) · Tap to ope
 const codeCreate: Handler = async (c) => {
   const plan = planCode({ code: S(c, "code"), kind: S(c, "kind"), value: S(c, "value"), maxUses: S(c, "max_uses"), lastDay: S(c, "last_day") }, { maxAmountCents: await maxTicketCents(c), nowSec: now() });
   if (!plan.ok) return back("/admin/codes", plan.error, "err", "make");
+  const tours = await codeTours(c);
+  const dates = datesFromForm(c, tours);
+  if (!dates.ok) return back("/admin/codes", dates.error, "err", "make");
   const nonce = /^[\w-]{8,64}$/.test(S(c, "nonce")) ? S(c, "nonce") : crypto.randomUUID();
   const r = await createCode(c.env, plan, nonce);
   if (!r.ok) {
     await audit(c.env.DB, c.auth.user.id, "Tried to make a discount code (Stripe refused)", `${plan.words}: ${r.error}`);
     return back("/admin/codes", r.error === NEEDS_PERMISSION ? r.error : `Stripe didn't make the code: ${r.error} Nothing was changed.`, "err", "make");
   }
-  await audit(c.env.DB, c.auth.user.id, "Made a discount code", `${plan.words} (${r.id})`);
+  await setDates(c.env.DB, r.id, dates.ids, now());
+  const datesSaid = ruleWords(await datesFor(c.env.DB, r.id), now());
+  await audit(c.env.DB, c.auth.user.id, "Made a discount code", `${plan.words}, ${datesSaid.toLowerCase()} (${r.id})`);
   return back("/admin/codes", `✓ ${plan.code} is on. Riders can use it now.`, "ok", `code-${r.id}`);
+};
+
+const codeDatesSave: Handler = async (c, m) => {
+  const id = m[1];
+  const tours = await codeTours(c);
+  const dates = datesFromForm(c, tours);
+  if (!dates.ok) return back("/admin/codes", dates.error, "err", `code-${id}`);
+  // The code must exist in Stripe (never a rule for an id someone typed).
+  const r = await stripeApi.call(c.env, "GET", `/promotion_codes/${id}`);
+  if (r.status !== 200 || !r.body?.code) return back("/admin/codes", "Stripe didn't find that code, so nothing was changed.", "err", `code-${id}`);
+  const before = ruleWords(await datesFor(c.env.DB, id), now());
+  await setDates(c.env.DB, id, dates.ids, now());
+  const after = ruleWords(await datesFor(c.env.DB, id), now());
+  await audit(c.env.DB, c.auth.user.id, "Changed a discount code's dates", `${r.body.code}: ${before} → ${after} (${id})`);
+  return back("/admin/codes", `✓ ${r.body.code}: ${after}.`, "ok", `code-${id}`);
 };
 
 const codeSwitch: Handler = async (c, m) => {
@@ -1289,6 +1336,7 @@ const ROUTES: [RegExp, string, Handler][] = [
   [/^\/admin\/codes$/, "GET", codes],
   [/^\/admin\/codes$/, "POST", codeCreate],
   [/^\/admin\/codes\/(promo_[A-Za-z0-9]+)\/(on|off)$/, "POST", codeSwitch],
+  [/^\/admin\/codes\/(promo_[A-Za-z0-9]{1,64})\/dates$/, "POST", codeDatesSave],
   [/^\/admin\/publish$/, "POST", publish],
   [/^\/admin\/pages$/, "GET", pagesList],
   [/^\/admin\/pages\/([a-z-]+)$/, "GET", pageEdit],

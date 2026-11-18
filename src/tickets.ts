@@ -8,6 +8,7 @@ import type { Page } from "./content";
 import { esc, type Env, html, ipHash, now, redirect, sameOrigin, text } from "./http";
 import { layout, type RenderCtx } from "./render";
 import { stripeApi, stripeReady, verifyWebhook } from "./stripe";
+import { checkCode } from "./discounts";
 
 export const POLICY_PLACEHOLDER = "Refund and cancellation policy coming soon. Questions before you book? Email team@memphisraptour.com.";
 const CHECKOUTS_PER_HOUR = 10;
@@ -102,10 +103,11 @@ ${calendar(tours)}${policy(ctx)}</section>`);
 <div><dt class="label">How long</dt><dd>${esc(t.duration_text)}</dd></div><div><dt class="label">Ticket</dt><dd>${money(tour.price_cents)} each</dd></div>
 <div class="wide"><dt class="label">Meet</dt><dd>${esc(t.meeting_point)}</dd></div><div class="wide"><dt class="label">Seats</dt><dd>${seatsLine(tour)}</dd></div></dl>`;
     let error = "";
+    let codeError = false;
     let v: Record<string, string> = {};
     if (req.method === "POST") {
       const form = await req.formData();
-      v = { seats: String(form.get("seats") || ""), name: String(form.get("name") || "").trim().slice(0, 80), email: String(form.get("email") || "").trim().slice(0, 254), phone: String(form.get("phone") || "").trim().slice(0, 30) };
+      v = { seats: String(form.get("seats") || ""), name: String(form.get("name") || "").trim().slice(0, 80), email: String(form.get("email") || "").trim().slice(0, 254), phone: String(form.get("phone") || "").trim().slice(0, 30), code: String(form.get("code") || "").trim().slice(0, 40) };
       if (String(form.get("website") || "")) return redirect("/tickets");
       if (!sameOrigin(req)) error = "Please book from the form on this site.";
       else if (!ready.ok) error = "Online booking isn't switched on yet.";
@@ -117,12 +119,18 @@ ${calendar(tours)}${policy(ctx)}</section>`);
         if ((n?.n ?? 0) >= CHECKOUTS_PER_HOUR) error = "Too many tries from this connection. Wait an hour, or email team@memphisraptour.com.";
         else {
           await env.DB.prepare("INSERT INTO attempts (kind, ip_hash, at) VALUES ('checkout', ?, ?)").bind(ip, now()).run();
+          // A code is checked here, on the server, before any seats are held (the form is not trusted).
+          const code = v.code ? await checkCode(env, v.code, tour.id, now()) : null;
+          if (code && !code.ok) { error = code.message; codeError = true; }
+          else {
           const hold = await takeSeats(env.DB, { tourId: tour.id, seats: Number(v.seats), name: v.name, email: v.email, phone: v.phone, source: "site", status: "held" });
           if (!hold.ok) error = hold.reason;
           else {
-            const go = await startCheckout(env, url.origin, hold.booking, tour);
+            const go = await startCheckout(env, url.origin, hold.booking, tour, code?.ok ? code.promoId : undefined);
             if (go.ok) return redirect(go.url, 303);
             error = go.reason;
+            codeError = !!code;
+          }
           }
         }
       }
@@ -138,6 +146,7 @@ ${calendar(tours)}${policy(ctx)}</section>`);
 <label>Name for the booking<input name="name" required maxlength="80" autocomplete="name" value="${esc(v.name || "")}"></label>
 <label>Email<span class="sub">Your confirmation goes here.</span><input type="email" name="email" required maxlength="254" autocomplete="email" inputmode="email" value="${esc(v.email || "")}"></label>
 <label>Mobile <span class="sub">(optional, only if we need to reach you on the day)</span><input type="tel" name="phone" maxlength="30" autocomplete="tel" value="${esc(v.phone || "")}"></label>
+<label>Discount code <span class="sub">(optional)</span><input name="code" maxlength="40" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(v.code || "")}"${codeError ? ' aria-invalid="true" autofocus' : ""}><span class="sub">Have a code? Type it here. The payment page shows the new total.</span></label>
 <div class="hp" aria-hidden="true"><label>Leave this empty<input name="website" tabindex="-1" autocomplete="off"></label></div>
 <button class="btn btn-gold" type="submit">Go to payment ›</button>
 <p class="sub">Pay by card, Apple Pay or Google Pay on Stripe's secure page. Your seats are held for ${15} minutes while you pay.</p>
