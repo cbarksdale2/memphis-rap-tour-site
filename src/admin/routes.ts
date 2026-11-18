@@ -11,6 +11,7 @@ import {
 import { mailer } from "../email";
 import { ipHash, sha256Hex } from "../http";
 import { stripeReady } from "../stripe";
+import { createCode, ended, lastDayWords, listCodes, NEEDS_PERMISSION, offWords, planCode, type PromoCode, setCodeActive } from "../discounts";
 import { reminderWords } from "../reminders";
 
 type Reminded = { r24_state: string | null; r24_detail: string | null; r1_state: string | null; r1_detail: string | null };
@@ -294,6 +295,7 @@ ${row("Tour info", "Price, length, times, meeting point and stops shown on the s
 ${row("Private tour requests", "Groups asking for a private tour", '<a href="/admin/requests">Open ›</a>')}
 ${row("Questions (FAQ)", "Add, edit and order the questions", '<a href="/admin/faq">Open ›</a>')}
 ${row("Reviews", "Short quotes from Tripadvisor reviews (shown without links)", '<a href="/admin/reviews">Open ›</a>')}
+${row("Discount codes", "Make codes riders type at checkout; turn them off or on", '<a href="/admin/codes">Open ›</a>')}
 ${row("Photos", "Upload, describe and remove photos", '<a href="/admin/images">Open ›</a>')}
 ${row("History", "Every save, who made it, and one-tap restore", '<a href="/admin/history">Open ›</a>')}
 ${owner ? row("Email list", "Everyone who signed up, and a spreadsheet download", '<a href="/admin/subscribers">Open ›</a>') : ""}
@@ -982,9 +984,6 @@ const tours: Handler = async (c) => {
   return page(c, { title: "Tours", tab: "tours", flash: flashFrom(c.url) }, `
 <h1>Tours</h1>
 <p class="sub">Book buttons on the site go to ${mode === "own" ? "this site's own booking pages" : "Acuity"}. <a href="/admin/booking-setup">Online booking set-up ›</a></p>
-<ul class="rows">${list
-    .map((t) => row(`${esc(centralAndNy(t.starts_at))}${t.status === "closed" ? " · closed" : ""}`, `${t.taken} of ${t.capacity} seats taken · ${t.left === 0 ? "sold out" : `${t.left} left`} · ${money(t.price_cents)} each`, `<a href="/admin/tours/${t.id}">Open ›</a>`, `t-${t.id}`))
-    .join("") || '<li class="row"><div class="row-main"><b>No tour dates yet.</b><span class="sub">Add them below.</span></div></li>'}</ul>
 <details class="card" open><summary>+ Add repeating dates</summary>
 <form method="post" action="/admin/tours/repeat" class="stack">${csrf(c.auth)}
 <fieldset class="field"><legend class="flabel">Days</legend><div class="row-actions">${DAYS.map((d, i) => `<label class="checkline"><input type="checkbox" name="days" value="${i}"${i === 5 || i === 6 ? " checked" : ""}><span>${d}</span></label>`).join("")}</div></fieldset>
@@ -995,6 +994,9 @@ ${field("capacity", "Seats per tour", String(DEFAULT_CAPACITY), { type: "number"
 ${field("price", "Price per ticket, dollars", price, { required: true, hint: "Default: the price on Tour info." })}
 <div class="row-actions"><button class="btn btn-green" type="submit">+ Add these dates</button></div>
 </form></details>
+<ul class="rows">${list
+    .map((t) => row(`${esc(centralAndNy(t.starts_at))}${t.status === "closed" ? " · closed" : ""}`, `${t.taken} of ${t.capacity} seats taken · ${t.left === 0 ? "sold out" : `${t.left} left`} · ${money(t.price_cents)} each`, `<a href="/admin/tours/${t.id}">Open ›</a>`, `t-${t.id}`))
+    .join("") || '<li class="row"><div class="row-main"><b>No tour dates yet.</b><span class="sub">Add them above.</span></div></li>'}</ul>
 <details class="card"><summary>+ Add one date</summary>
 <form method="post" action="/admin/tours" class="stack">${csrf(c.auth)}
 ${field("date", "Day", today, { type: "date", required: true })}
@@ -1188,6 +1190,86 @@ const bookingSetupSave: Handler = async (c) => {
   return back("/admin/booking-setup", want === "own" ? "Done. Book buttons now go to this site." : "Done. Book buttons go to Acuity again.");
 };
 
+// ---------------- discount codes (kept in Stripe) ----------------
+
+async function maxTicketCents(c: Ctx): Promise<number> {
+  const { content } = await loadDraft(c.env.DB);
+  const info = Math.round(Number(content.ticket.price_amount || "0") * 100) || 0;
+  const upcoming = await listTours(c.env.DB, now(), now() + 365 * 86400, { includeClosed: true });
+  return Math.max(info, ...upcoming.map((t) => t.price_cents));
+}
+
+const codes: Handler = async (c) => {
+  const ready = stripeReady(c.env);
+  const list = ready.ok ? await listCodes(c.env) : { ok: false as const, error: ready.reason, permission: false };
+  const used = await c.env.DB.prepare("SELECT d.code, COUNT(*) AS n, SUM(b.status = 'paid') AS paid FROM booking_discounts d JOIN bookings b ON b.id = d.booking_id GROUP BY d.code").all<{ code: string; n: number; paid: number }>();
+  const byCode = new Map(used.results.map((r) => [r.code.toUpperCase(), r]));
+  const t = now();
+  const max = await maxTicketCents(c);
+  const canEdit = list.ok;
+  const bookingsWords = (code: string) => {
+    const u = byCode.get(code.toUpperCase());
+    if (!u) return "no bookings yet";
+    return u.paid === u.n ? `${u.n} paid booking${u.n === 1 ? "" : "s"}` : `${u.n} booking${u.n === 1 ? "" : "s"}, ${u.paid} still paid`;
+  };
+  const codeRow = (p: PromoCode) => {
+    const end = ended(p, t);
+    const uses = p.max_redemptions ? `Used ${p.times_redeemed} of ${p.max_redemptions}` : `Used ${p.times_redeemed} time${p.times_redeemed === 1 ? "" : "s"}, no limit`;
+    const until = p.expires_at ? (p.expires_at > t ? `works until ${lastDayWords(p.expires_at)}` : `last day was ${lastDayWords(p.expires_at)}`) : "no last day";
+    const chip = p.active && !end ? '<span class="chip chip-on">On</span>' : '<span class="chip chip-off">Off</span>';
+    const act = !canEdit ? "" : end ? '<span class="sub">Ended</span>'
+      : postButton(c.auth, `/admin/codes/${p.id}/${p.active ? "off" : "on"}`, p.active ? "Turn off" : "Turn back on", "btn btn-quiet");
+    return `<li class="row" id="code-${esc(p.id)}"><div class="row-main"><span><span class="code-text">${esc(p.code)}</span> ${chip}</span><span><b>${esc(offWords(p))}</b></span><span class="sub">${esc(uses)} · ${esc(bookingsWords(p.code))} · ${esc(end || until)}</span></div><div class="row-act">${act}</div></li>`;
+  };
+  const all = list.ok ? list.codes : [];
+  const on = all.filter((p) => p.active && !ended(p, t));
+  const off = all.filter((p) => !on.includes(p));
+  const nonce = crypto.randomUUID();
+  const line1 = list.ok ? `${on.length} code${on.length === 1 ? "" : "s"} on · ${off.length} off` : "Codes could not be read from Stripe";
+  return page(c, { title: "Discount codes", tab: "more", back: { href: "/admin/more", label: "More" }, flash: flashFrom(c.url) }, `
+<p class="line1">${esc(line1)}</p>
+<h1>Discount codes</h1>
+<p class="sub">Riders type a code on the Stripe payment page. Codes are kept in Stripe; this page makes them and turns them off or on.</p>
+${!list.ok ? `<p class="flash flash-gap" role="status">${esc(list.permission ? NEEDS_PERMISSION : `Can't show or make codes right now: ${list.error}.`)}</p>` : ""}
+${canEdit ? `<details class="card" id="make"><summary>+ Make a new code ▾</summary>
+<form method="post" action="/admin/codes" class="stack">${csrf(c.auth)}<input type="hidden" name="nonce" value="${nonce}">
+${field("code", "Code", "", { required: true, maxlength: 20, autocomplete: "off", hint: "What riders type. Letters and numbers only, 3 to 20; it is saved in capitals." })}
+<fieldset class="field"><legend class="flabel">Discount</legend><div class="row-actions">
+<label class="checkline"><input type="radio" name="kind" value="amount" checked><span>$ off</span></label>
+<label class="checkline"><input type="radio" name="kind" value="percent"><span>% off</span></label></div></fieldset>
+${field("value", "How much", "", { required: true, hint: `$ off: up to ${money(max)} (the ticket price), taken off the whole order once. % off: 1 to 100.` })}
+${field("max_uses", "Most uses (optional)", "", { type: "number", hint: "Blank = no limit. Each paid checkout is one use." })}
+${field("last_day", "Last day it works (optional)", "", { type: "date", hint: "Works until 11:59 pm Central that day. Blank = no last day." })}
+<p class="sub">Riders can use it as soon as you make it. You can turn it off any time.</p>
+<div class="row-actions"><button class="btn btn-green" type="submit">+ Make this code</button></div>
+</form></details>` : ""}
+${list.ok && !all.length ? `<p class="sub">No codes yet.</p>` : ""}
+${on.length ? `<p class="label">On now (${on.length})</p><ul class="rows">${on.map(codeRow).join("")}</ul>` : ""}
+${off.length ? `<details class="card"><summary>Off (${off.length}) · Tap to open ▾</summary><ul class="rows">${off.map(codeRow).join("")}</ul></details>` : ""}
+<p class="sub">Codes are never deleted, so bookings that used one still show it.</p>`);
+};
+
+const codeCreate: Handler = async (c) => {
+  const plan = planCode({ code: S(c, "code"), kind: S(c, "kind"), value: S(c, "value"), maxUses: S(c, "max_uses"), lastDay: S(c, "last_day") }, { maxAmountCents: await maxTicketCents(c), nowSec: now() });
+  if (!plan.ok) return back("/admin/codes", plan.error, "err", "make");
+  const nonce = /^[\w-]{8,64}$/.test(S(c, "nonce")) ? S(c, "nonce") : crypto.randomUUID();
+  const r = await createCode(c.env, plan, nonce);
+  if (!r.ok) {
+    await audit(c.env.DB, c.auth.user.id, "Tried to make a discount code (Stripe refused)", `${plan.words}: ${r.error}`);
+    return back("/admin/codes", r.error === NEEDS_PERMISSION ? r.error : `Stripe didn't make the code: ${r.error} Nothing was changed.`, "err", "make");
+  }
+  await audit(c.env.DB, c.auth.user.id, "Made a discount code", `${plan.words} (${r.id})`);
+  return back("/admin/codes", `✓ ${plan.code} is on. Riders can use it now.`, "ok", `code-${r.id}`);
+};
+
+const codeSwitch: Handler = async (c, m) => {
+  const on = m[2] === "on";
+  const r = await setCodeActive(c.env, m[1], on);
+  if (!r.ok) return back("/admin/codes", `Stripe didn't change the code: ${r.error}`, "err", `code-${m[1]}`);
+  await audit(c.env.DB, c.auth.user.id, on ? "Turned a discount code back on" : "Turned off a discount code", `${r.code} (${m[1]})`);
+  return back("/admin/codes", on ? `✓ ${r.code} is on again.` : `${r.code} is off. Riders can't use it now.`, "ok", `code-${m[1]}`);
+};
+
 const ROUTES: [RegExp, string, Handler][] = [
   [/^\/admin$/, "GET", home],
   [/^\/admin\/more$/, "GET", more],
@@ -1204,6 +1286,9 @@ const ROUTES: [RegExp, string, Handler][] = [
   [/^\/admin\/bookings\/(\d+)\/checkin$/, "POST", bookingCheckin],
   [/^\/admin\/booking-setup$/, "GET", bookingSetup],
   [/^\/admin\/booking-setup$/, "POST", bookingSetupSave],
+  [/^\/admin\/codes$/, "GET", codes],
+  [/^\/admin\/codes$/, "POST", codeCreate],
+  [/^\/admin\/codes\/(promo_[A-Za-z0-9]+)\/(on|off)$/, "POST", codeSwitch],
   [/^\/admin\/publish$/, "POST", publish],
   [/^\/admin\/pages$/, "GET", pagesList],
   [/^\/admin\/pages\/([a-z-]+)$/, "GET", pageEdit],

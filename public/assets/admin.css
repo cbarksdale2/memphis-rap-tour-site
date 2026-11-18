@@ -95,3 +95,9 @@ details > summary::-webkit-details-marker{display:none}
 .tick{width:44px;height:44px;border-radius:50%;border:2px solid var(--mut);background:transparent;font-size:22px;color:var(--ok);cursor:pointer}
 .tick.done{border-color:var(--ok);background:var(--okbg)}
 @media print{.tabs,.banner-gold,.back,.sub{display:none}body{background:#fff;color:#000}.checkin li{break-inside:avoid;border-color:#999}}
+
+/* Discount codes */
+.code-text{font:600 16px/1.3 "IBM Plex Mono",monospace;letter-spacing:.04em}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:99px;vertical-align:2px}
+.chip-on{background:var(--okbg);color:var(--ok)}
+.chip-off{background:var(--chip);color:var(--mut)}
